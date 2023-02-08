@@ -2627,6 +2627,7 @@ async def pug(ctx: Context):
 
 
 @bot.command()
+@commands.check(is_admin)
 async def randommap(ctx: Context):
     session = Session()
     voteable_maps: list[VoteableMap] = session.query(VoteableMap).all()
