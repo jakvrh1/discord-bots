@@ -63,24 +63,23 @@ async def on_command_error(ctx: Context, error: CommandError):
 @bot.event
 async def on_message(message: Message):
     if message.channel.id == CHANNEL_ID:
-        session = Session()
-        player: Player | None = (
-            session.query(Player).filter(Player.id == message.author.id).first()
-        )
-        if player:
-            player.last_activity_at = datetime.now(timezone.utc)
-            if player.name != message.author.display_name:
-                player.name = message.author.display_name
-        else:
-            session.add(
-                Player(
-                    id=message.author.id,
-                    name=message.author.display_name,
-                    last_activity_at=datetime.now(timezone.utc),
-                )
+        with Session() as session:
+            player: Player | None = (
+                session.query(Player).filter(Player.id == message.author.id).first()
             )
-        session.commit()
-        session.close()
+            if player:
+                player.last_activity_at = datetime.now(timezone.utc)
+                if player.name != message.author.display_name:
+                    player.name = message.author.display_name
+            else:
+                session.add(
+                    Player(
+                        id=message.author.id,
+                        name=message.author.display_name,
+                        last_activity_at=datetime.now(timezone.utc),
+                    )
+                )
+            session.commit()
         await bot.process_commands(message)
 
         # Custom commands below
@@ -89,16 +88,15 @@ async def on_message(message: Message):
 
         bot_commands = {command.name for command in bot.commands}
         command_name = message.content.split(" ")[0][1:]
-        session = Session()
-        if command_name not in bot_commands:
-            custom_command: CustomCommand | None = (
-                session.query(CustomCommand)
-                .filter(CustomCommand.name == command_name)
-                .first()
-            )
-            if custom_command:
-                await message.channel.send(content=custom_command.output)
-        session.close()
+        with Session() as session:
+            if command_name not in bot_commands:
+                custom_command: CustomCommand | None = (
+                    session.query(CustomCommand)
+                    .filter(CustomCommand.name == command_name)
+                    .first()
+                )
+                if custom_command:
+                    await message.channel.send(content=custom_command.output)
 
 
 @bot.event

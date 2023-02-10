@@ -531,41 +531,36 @@ async def is_admin(ctx: Context):
 
     https://discordpy.readthedocs.io/en/stable/ext/commands/commands.html#global-checks
     """
-    session = Session()
-    message: Message = ctx.message
-    caller = (
-        session.query(Player)
-        .filter(Player.id == message.author.id, Player.is_admin == True)
-        .first()
-    )
-    if caller:
-        session.close()
-        return True
-
-    if not message.guild:
-        session.close()
-        return False
-
-    member = message.guild.get_member(message.author.id)
-    if not member:
-        session.close()
-        return False
-
-    admin_roles = session.query(AdminRole).all()
-    admin_role_ids = map(lambda x: x.role_id, admin_roles)
-    member_role_ids = map(lambda x: x.id, member.roles)
-    is_admin: bool = len(set(admin_role_ids).intersection(set(member_role_ids))) > 0
-    if is_admin:
-        session.close()
-        return True
-    else:
-        await send_message(
-            message.channel,
-            embed_description="You must be an admin to use that command",
-            colour=Colour.red(),
+    with Session() as session:
+        message: Message = ctx.message
+        caller = (
+            session.query(Player)
+            .filter(Player.id == message.author.id, Player.is_admin == True)
+            .first()
         )
-        session.close()
-        return False
+        if caller:
+            return True
+
+        if not message.guild:
+            return False
+
+        member = message.guild.get_member(message.author.id)
+        if not member:
+            return False
+
+        admin_roles = session.query(AdminRole).all()
+        admin_role_ids = map(lambda x: x.role_id, admin_roles)
+        member_role_ids = map(lambda x: x.id, member.roles)
+        is_admin: bool = len(set(admin_role_ids).intersection(set(member_role_ids))) > 0
+        if is_admin:
+            return True
+        else:
+            await send_message(
+                message.channel,
+                embed_description="You must be an admin to use that command",
+                colour=Colour.red(),
+            )
+            return False
 
 
 def mock_teams_str(
@@ -1042,133 +1037,133 @@ async def add(ctx: Context, *args):
         )
         return
 
-    session = Session()
-    most_recent_game: FinishedGame | None = (
-        session.query(FinishedGame)
-        .join(FinishedGamePlayer)
-        .filter(
-            FinishedGamePlayer.player_id == message.author.id,
-        )
-        .order_by(FinishedGame.finished_at.desc())  # type: ignore
-        .first()
-    )
-
-    queues_to_add: list[Queue] = []
-    if len(args) == 0:
-        # Don't auto-add to isolated queues
-        queues_to_add += session.query(Queue).filter(Queue.is_isolated == False).order_by(Queue.created_at.asc()).all()  # type: ignore
-    else:
-        all_queues = session.query(Queue).order_by(Queue.created_at.asc()).all()  # type: ignore
-        for arg in args:
-            # Try adding by integer index first, then try string name
-            try:
-                queue_index = int(arg) - 1
-                queues_to_add.append(all_queues[queue_index])
-            except ValueError:
-                queue: Queue | None = session.query(Queue).filter(Queue.name.ilike(arg)).first()  # type: ignore
-                if queue:
-                    queues_to_add.append(queue)
-            except IndexError:
-                continue
-
-    if len(queues_to_add) == 0:
-        await send_message(
-            message.channel,
-            content="No valid queues found",
-            colour=Colour.red(),
-        )
-        return
-
-    vpw: VotePassedWaitlist | None = session.query(VotePassedWaitlist).first()
-    if vpw:
-        for queue in queues_to_add:
-            session.add(
-                VotePassedWaitlistPlayer(
-                    vote_passed_waitlist_id=vpw.id,
-                    player_id=message.author.id,
-                    queue_id=queue.id,
-                )
+    with Session() as session:
+        most_recent_game: FinishedGame | None = (
+            session.query(FinishedGame)
+            .join(FinishedGamePlayer)
+            .filter(
+                FinishedGamePlayer.player_id == message.author.id,
             )
-            try:
-                session.commit()
-            except IntegrityError as exc:
-                print("integrity error?", exc)
-                session.rollback()
+            .order_by(FinishedGame.finished_at.desc())  # type: ignore
+            .first()
+        )
 
-        current_time: datetime = datetime.now(timezone.utc)
-        # The assumption is the end timestamp is later than now, otherwise it
-        # would have been processed
-        difference: float = (
-            vpw.end_waitlist_at.replace(tzinfo=timezone.utc) - current_time
-        ).total_seconds()
-        if difference < config.RE_ADD_DELAY_SECONDS:
-            waitlist_message = f"A vote just passed, you will be randomized into the queue in {floor(difference)} seconds"
+        queues_to_add: list[Queue] = []
+        if len(args) == 0:
+            # Don't auto-add to isolated queues
+            queues_to_add += session.query(Queue).filter(Queue.is_isolated == False).order_by(Queue.created_at.asc()).all()  # type: ignore
+        else:
+            all_queues = session.query(Queue).order_by(Queue.created_at.asc()).all()  # type: ignore
+            for arg in args:
+                # Try adding by integer index first, then try string name
+                try:
+                    queue_index = int(arg) - 1
+                    queues_to_add.append(all_queues[queue_index])
+                except ValueError:
+                    queue: Queue | None = session.query(Queue).filter(Queue.name.ilike(arg)).first()  # type: ignore
+                    if queue:
+                        queues_to_add.append(queue)
+                except IndexError:
+                    continue
+
+        if len(queues_to_add) == 0:
             await send_message(
                 message.channel,
-                # TODO: Populate this message with the queues the player was
-                # eligible for
-                content=f"{message.author.display_name} added to:",
-                embed_description=waitlist_message,
-                colour=Colour.green(),
+                content="No valid queues found",
+                colour=Colour.red(),
             )
-        return
+            return
 
-    is_waitlist: bool = False
-    waitlist_message: str | None = None
-    if most_recent_game and most_recent_game.finished_at:
-        # The timezone info seems to get lost in the round trip to the database
-        finish_time: datetime = most_recent_game.finished_at.replace(
-            tzinfo=timezone.utc
-        )
-        current_time: datetime = datetime.now(timezone.utc)
-        difference: float = (current_time - finish_time).total_seconds()
-        if difference < config.RE_ADD_DELAY_SECONDS:
-            time_to_wait: int = floor(config.RE_ADD_DELAY_SECONDS - difference)
-            waitlist_message = f"Your game has just finished, you will be randomized into the queue in {time_to_wait} seconds"
-            is_waitlist = True
-
-    if is_waitlist and most_recent_game:
-        for queue in queues_to_add:
-            # TODO: Check player eligibility here?
-            queue_waitlist = (
-                session.query(QueueWaitlist)
-                .filter(QueueWaitlist.finished_game_id == most_recent_game.id)
-                .first()
-            )
-            if queue_waitlist:
+        vpw: VotePassedWaitlist | None = session.query(VotePassedWaitlist).first()
+        if vpw:
+            for queue in queues_to_add:
                 session.add(
-                    QueueWaitlistPlayer(
-                        queue_id=queue.id,
-                        queue_waitlist_id=queue_waitlist.id,
+                    VotePassedWaitlistPlayer(
+                        vote_passed_waitlist_id=vpw.id,
                         player_id=message.author.id,
+                        queue_id=queue.id,
                     )
                 )
                 try:
                     session.commit()
-                except IntegrityError:
+                except IntegrityError as exc:
+                    print("integrity error?", exc)
                     session.rollback()
 
-        await send_message(
-            message.channel,
-            # TODO: Populate this message with the queues the player was
-            # eligible for
-            content=f"{escape_markdown(message.author.display_name)} added to:",
-            embed_description=waitlist_message,
-            colour=Colour.green(),
-        )
-        return
+            current_time: datetime = datetime.now(timezone.utc)
+            # The assumption is the end timestamp is later than now, otherwise it
+            # would have been processed
+            difference: float = (
+                vpw.end_waitlist_at.replace(tzinfo=timezone.utc) - current_time
+            ).total_seconds()
+            if difference < config.RE_ADD_DELAY_SECONDS:
+                waitlist_message = f"A vote just passed, you will be randomized into the queue in {floor(difference)} seconds"
+                await send_message(
+                    message.channel,
+                    # TODO: Populate this message with the queues the player was
+                    # eligible for
+                    content=f"{message.author.display_name} added to:",
+                    embed_description=waitlist_message,
+                    colour=Colour.green(),
+                )
+            return
 
-    if isinstance(message.channel, TextChannel) and message.guild:
-        add_player_queue.put(
-            AddPlayerQueueMessage(
-                message.author.id,
-                message.author.display_name,
-                [q.id for q in queues_to_add],
-                True,
-                message.channel,
-                message.guild,
+        is_waitlist: bool = False
+        waitlist_message: str | None = None
+        if most_recent_game and most_recent_game.finished_at:
+            # The timezone info seems to get lost in the round trip to the database
+            finish_time: datetime = most_recent_game.finished_at.replace(
+                tzinfo=timezone.utc
             )
-        )
+            current_time: datetime = datetime.now(timezone.utc)
+            difference: float = (current_time - finish_time).total_seconds()
+            if difference < config.RE_ADD_DELAY_SECONDS:
+                time_to_wait: int = floor(config.RE_ADD_DELAY_SECONDS - difference)
+                waitlist_message = f"Your game has just finished, you will be randomized into the queue in {time_to_wait} seconds"
+                is_waitlist = True
+
+        if is_waitlist and most_recent_game:
+            for queue in queues_to_add:
+                # TODO: Check player eligibility here?
+                queue_waitlist = (
+                    session.query(QueueWaitlist)
+                    .filter(QueueWaitlist.finished_game_id == most_recent_game.id)
+                    .first()
+                )
+                if queue_waitlist:
+                    session.add(
+                        QueueWaitlistPlayer(
+                            queue_id=queue.id,
+                            queue_waitlist_id=queue_waitlist.id,
+                            player_id=message.author.id,
+                        )
+                    )
+                    try:
+                        session.commit()
+                    except IntegrityError:
+                        session.rollback()
+
+            await send_message(
+                message.channel,
+                # TODO: Populate this message with the queues the player was
+                # eligible for
+                content=f"{escape_markdown(message.author.display_name)} added to:",
+                embed_description=waitlist_message,
+                colour=Colour.green(),
+            )
+            return
+
+        if isinstance(message.channel, TextChannel) and message.guild:
+            add_player_queue.put(
+                AddPlayerQueueMessage(
+                    message.author.id,
+                    message.author.display_name,
+                    [q.id for q in queues_to_add],
+                    True,
+                    message.channel,
+                    message.guild,
+                )
+            )
 
 
 @bot.command()
@@ -1681,57 +1676,57 @@ async def del_(ctx: Context, *args):
     If no args deletes from existing queues
     """
     message = ctx.message
-    session = Session()
-    queues_to_del: list[Queue] = []
-    all_queues: list(Queue) = session.query(Queue).join(QueuePlayer).filter(QueuePlayer.player_id == message.author.id).order_by(Queue.created_at.asc()).all()  # type: ignore
-    if len(args) == 0:
-        queues_to_del = all_queues
-    else:
-        for arg in args:
-            # Try remove by integer index first, then try string name
-            try:
-                queue_index = int(arg) - 1
-                queues_to_del.append(all_queues[queue_index])
-            except ValueError:
-                queue: Queue | None = session.query(Queue).filter(Queue.name.ilike(arg)).first()  # type: ignore
-                if queue:
-                    queues_to_del.append(queue)
-            except IndexError:
-                continue
+    with Session() as session:
+        queues_to_del: list[Queue] = []
+        all_queues: list(Queue) = session.query(Queue).join(QueuePlayer).filter(QueuePlayer.player_id == message.author.id).order_by(Queue.created_at.asc()).all()  # type: ignore
+        if len(args) == 0:
+            queues_to_del = all_queues
+        else:
+            for arg in args:
+                # Try remove by integer index first, then try string name
+                try:
+                    queue_index = int(arg) - 1
+                    queues_to_del.append(all_queues[queue_index])
+                except ValueError:
+                    queue: Queue | None = session.query(Queue).filter(Queue.name.ilike(arg)).first()  # type: ignore
+                    if queue:
+                        queues_to_del.append(queue)
+                except IndexError:
+                    continue
 
-    for queue in queues_to_del:
-        session.query(QueuePlayer).filter(
-            QueuePlayer.queue_id == queue.id, QueuePlayer.player_id == message.author.id
-        ).delete()
-        # TODO: Test this part
-        queue_waitlist: QueueWaitlist | None = (
-            session.query(QueueWaitlist)
-            .filter(
-                QueueWaitlist.queue_id == queue.id,
-            )
-            .first()
-        )
-        if queue_waitlist:
-            session.query(QueueWaitlistPlayer).filter(
-                QueueWaitlistPlayer.player_id == message.author.id,
-                QueueWaitlistPlayer.queue_waitlist_id == queue_waitlist.id,
+        for queue in queues_to_del:
+            session.query(QueuePlayer).filter(
+                QueuePlayer.queue_id == queue.id, QueuePlayer.player_id == message.author.id
             ).delete()
+            # TODO: Test this part
+            queue_waitlist: QueueWaitlist | None = (
+                session.query(QueueWaitlist)
+                .filter(
+                    QueueWaitlist.queue_id == queue.id,
+                )
+                .first()
+            )
+            if queue_waitlist:
+                session.query(QueueWaitlistPlayer).filter(
+                    QueueWaitlistPlayer.player_id == message.author.id,
+                    QueueWaitlistPlayer.queue_waitlist_id == queue_waitlist.id,
+                ).delete()
 
-    queue_statuses = []
-    queue: Queue
-    for queue in session.query(Queue).order_by(Queue.created_at.asc()).all():  # type: ignore
-        queue_players = (
-            session.query(QueuePlayer).filter(QueuePlayer.queue_id == queue.id).all()
+        queue_statuses = []
+        queue: Queue
+        for queue in session.query(Queue).order_by(Queue.created_at.asc()).all():  # type: ignore
+            queue_players = (
+                session.query(QueuePlayer).filter(QueuePlayer.queue_id == queue.id).all()
+            )
+            queue_statuses.append(f"{queue.name} [{len(queue_players)}/{queue.size}]")
+
+        await send_message(
+            message.channel,
+            content=f"{escape_markdown(message.author.display_name)} removed from: {', '.join([queue.name for queue in queues_to_del])}",
+            embed_description=" ".join(queue_statuses),
+            colour=Colour.green(),
         )
-        queue_statuses.append(f"{queue.name} [{len(queue_players)}/{queue.size}]")
-
-    await send_message(
-        message.channel,
-        content=f"{escape_markdown(message.author.display_name)} removed from: {', '.join([queue.name for queue in queues_to_del])}",
-        embed_description=" ".join(queue_statuses),
-        colour=Colour.green(),
-    )
-    session.commit()
+        session.commit()
 
 
 @bot.command(usage="<player>")
@@ -3201,145 +3196,145 @@ async def showgamedebug(ctx: Context, game_id: str):
 
 @bot.command()
 async def status(ctx: Context, *args):
-    session = Session()
-    queues: list[Queue] = []
-    all_queues = session.query(Queue).order_by(Queue.created_at.asc()).all()  # type: ignore
-    if len(args) == 0:
-        queues: list[Queue] = all_queues
-    else:
-        for arg in args:
-            # Try adding by integer index first, then try string name
-            try:
-                queue_index = int(arg) - 1
-                queues.append(all_queues[queue_index])
-            except ValueError:
-                queue: Queue | None = session.query(Queue).filter(Queue.name.ilike(arg)).first()  # type: ignore
-                if queue:
-                    queues.append(queue)
-            except IndexError:
-                continue
-
-    games_by_queue: dict[str, list[InProgressGame]] = defaultdict(list)
-    for game in session.query(InProgressGame):
-        if game.queue_id:
-            games_by_queue[game.queue_id].append(game)
-
-    output = ""
-    # Only show map if they didn't request a specific queue
-    if len(args) == 0:
-        current_map: CurrentMap | None = session.query(CurrentMap).first()
-        if current_map:
-            rotation_maps: list[RotationMap] = session.query(RotationMap).order_by(RotationMap.created_at.asc()).all()  # type: ignore
-            next_rotation_map_index = (current_map.map_rotation_index + 1) % len(
-                rotation_maps
-            )
-            next_map = rotation_maps[next_rotation_map_index]
-
-            time_since_update: timedelta = datetime.now(
-                timezone.utc
-            ) - current_map.updated_at.replace(tzinfo=timezone.utc)
-            time_until_rotation = config.MAP_ROTATION_MINUTES - (
-                time_since_update.seconds // 60
-            )
-            if config.RANDOM_MAP_ROTATION:
-                output += f"**Next map: {current_map.full_name} ({current_map.short_name})**\n_(Auto-rotates to a random map in {time_until_rotation} minutes)_\n"
-            else:
-                if current_map.map_rotation_index == 0:
-                    output += f"**Next map: {current_map.full_name} ({current_map.short_name})**\n_Map after next: {next_map.full_name} ({next_map.short_name})_\n"
-                else:
-                    output += f"**Next map: {current_map.full_name} ({current_map.short_name})**\n_Map after next (auto-rotates in {time_until_rotation} minutes): {next_map.full_name} ({next_map.short_name})_\n"
-        skip_map_votes: list[SkipMapVote] = session.query(SkipMapVote).all()
-        output += f"_Votes to skip (voteskip): [{len(skip_map_votes)}/{config.MAP_VOTE_THRESHOLD}]_\n"
-
-        # TODO: This is duplicated
-        map_votes: list[MapVote] = session.query(MapVote).all()
-        voted_map_ids: list[str] = [map_vote.voteable_map_id for map_vote in map_votes]
-        voted_maps: list[VoteableMap] = (
-            session.query(VoteableMap).filter(VoteableMap.id.in_(voted_map_ids)).all()  # type: ignore
-        )
-        voted_maps_str = ", ".join(
-            [
-                f"{voted_map.short_name} [{voted_map_ids.count(voted_map.id)}/{config.MAP_VOTE_THRESHOLD}]"
-                for voted_map in voted_maps
-            ]
-        )
-        output += f"_Votes to change map (votemap): {voted_maps_str}_\n\n"
-
-    for i, queue in enumerate(queues):
-        if i > 0:
-            output += "\n"
-        players_in_queue = (
-            session.query(Player)
-            .join(QueuePlayer)
-            .filter(QueuePlayer.queue_id == queue.id)
-            .all()
-        )
-        queue_region: QueueRegion | None = None
-        if queue.queue_region_id:
-            queue_region = (
-                session.query(QueueRegion)
-                .filter(QueueRegion.id == queue.queue_region_id)
-                .first()
-            )
-        if queue.is_locked:
-            output += (
-                f"*{queue.name} (locked)* [{len(players_in_queue)} / {queue.size}]\n"
-            )
+    with Session() as session:
+        queues: list[Queue] = []
+        all_queues = session.query(Queue).order_by(Queue.created_at.asc()).all()  # type: ignore
+        if len(args) == 0:
+            queues: list[Queue] = all_queues
         else:
-            output += f"**{queue.name}** [{len(players_in_queue)} / {queue.size}]\n"
+            for arg in args:
+                # Try adding by integer index first, then try string name
+                try:
+                    queue_index = int(arg) - 1
+                    queues.append(all_queues[queue_index])
+                except ValueError:
+                    queue: Queue | None = session.query(Queue).filter(Queue.name.ilike(arg)).first()  # type: ignore
+                    if queue:
+                        queues.append(queue)
+                except IndexError:
+                    continue
 
-        if len(players_in_queue) > 0:
-            output += f"**IN QUEUE:** "
-            output += ", ".join(
-                sorted([escape_markdown(player.name) for player in players_in_queue])
+        games_by_queue: dict[str, list[InProgressGame]] = defaultdict(list)
+        for game in session.query(InProgressGame):
+            if game.queue_id:
+                games_by_queue[game.queue_id].append(game)
+
+        output = ""
+        # Only show map if they didn't request a specific queue
+        if len(args) == 0:
+            current_map: CurrentMap | None = session.query(CurrentMap).first()
+            if current_map:
+                rotation_maps: list[RotationMap] = session.query(RotationMap).order_by(RotationMap.created_at.asc()).all()  # type: ignore
+                next_rotation_map_index = (current_map.map_rotation_index + 1) % len(
+                    rotation_maps
+                )
+                next_map = rotation_maps[next_rotation_map_index]
+
+                time_since_update: timedelta = datetime.now(
+                    timezone.utc
+                ) - current_map.updated_at.replace(tzinfo=timezone.utc)
+                time_until_rotation = config.MAP_ROTATION_MINUTES - (
+                    time_since_update.seconds // 60
+                )
+                if config.RANDOM_MAP_ROTATION:
+                    output += f"**Next map: {current_map.full_name} ({current_map.short_name})**\n_(Auto-rotates to a random map in {time_until_rotation} minutes)_\n"
+                else:
+                    if current_map.map_rotation_index == 0:
+                        output += f"**Next map: {current_map.full_name} ({current_map.short_name})**\n_Map after next: {next_map.full_name} ({next_map.short_name})_\n"
+                    else:
+                        output += f"**Next map: {current_map.full_name} ({current_map.short_name})**\n_Map after next (auto-rotates in {time_until_rotation} minutes): {next_map.full_name} ({next_map.short_name})_\n"
+            skip_map_votes: list[SkipMapVote] = session.query(SkipMapVote).all()
+            output += f"_Votes to skip (voteskip): [{len(skip_map_votes)}/{config.MAP_VOTE_THRESHOLD}]_\n"
+
+            # TODO: This is duplicated
+            map_votes: list[MapVote] = session.query(MapVote).all()
+            voted_map_ids: list[str] = [map_vote.voteable_map_id for map_vote in map_votes]
+            voted_maps: list[VoteableMap] = (
+                session.query(VoteableMap).filter(VoteableMap.id.in_(voted_map_ids)).all()  # type: ignore
             )
-            output += "\n"
+            voted_maps_str = ", ".join(
+                [
+                    f"{voted_map.short_name} [{voted_map_ids.count(voted_map.id)}/{config.MAP_VOTE_THRESHOLD}]"
+                    for voted_map in voted_maps
+                ]
+            )
+            output += f"_Votes to change map (votemap): {voted_maps_str}_\n\n"
 
-        if queue.id in games_by_queue:
-            game: InProgressGame
-            for i, game in enumerate(games_by_queue[queue.id]):
-                team0_players = (
-                    session.query(Player)
-                    .join(InProgressGamePlayer)
-                    .filter(
-                        InProgressGamePlayer.in_progress_game_id == game.id,
-                        InProgressGamePlayer.team == 0,
+        for i, queue in enumerate(queues):
+            if i > 0:
+                output += "\n"
+            players_in_queue = (
+                session.query(Player)
+                .join(QueuePlayer)
+                .filter(QueuePlayer.queue_id == queue.id)
+                .all()
+            )
+            queue_region: QueueRegion | None = None
+            if queue.queue_region_id:
+                queue_region = (
+                    session.query(QueueRegion)
+                    .filter(QueueRegion.id == queue.queue_region_id)
+                    .first()
+                )
+            if queue.is_locked:
+                output += (
+                    f"*{queue.name} (locked)* [{len(players_in_queue)} / {queue.size}]\n"
+                )
+            else:
+                output += f"**{queue.name}** [{len(players_in_queue)} / {queue.size}]\n"
+
+            if len(players_in_queue) > 0:
+                output += f"**IN QUEUE:** "
+                output += ", ".join(
+                    sorted([escape_markdown(player.name) for player in players_in_queue])
+                )
+                output += "\n"
+
+            if queue.id in games_by_queue:
+                game: InProgressGame
+                for i, game in enumerate(games_by_queue[queue.id]):
+                    team0_players = (
+                        session.query(Player)
+                        .join(InProgressGamePlayer)
+                        .filter(
+                            InProgressGamePlayer.in_progress_game_id == game.id,
+                            InProgressGamePlayer.team == 0,
+                        )
+                        .all()
                     )
-                    .all()
-                )
 
-                team1_players = (
-                    session.query(Player)
-                    .join(InProgressGamePlayer)
-                    .filter(
-                        InProgressGamePlayer.in_progress_game_id == game.id,
-                        InProgressGamePlayer.team == 1,
+                    team1_players = (
+                        session.query(Player)
+                        .join(InProgressGamePlayer)
+                        .filter(
+                            InProgressGamePlayer.in_progress_game_id == game.id,
+                            InProgressGamePlayer.team == 1,
+                        )
+                        .all()
                     )
-                    .all()
-                )
 
-                short_game_id = short_uuid(game.id)
-                if i > 0:
-                    output += "\n"
-                output += f"**Map: {game.map_full_name}** ({short_game_id}):\n"
-                output += pretty_format_team(
-                    game.team0_name, game.win_probability, team0_players
-                )
-                output += pretty_format_team(
-                    game.team1_name, 1 - game.win_probability, team1_players
-                )
-                minutes_ago = (
-                    datetime.now(timezone.utc)
-                    - game.created_at.replace(tzinfo=timezone.utc)
-                ).seconds // 60
-                output += f"@ {minutes_ago} minutes ago\n"
+                    short_game_id = short_uuid(game.id)
+                    if i > 0:
+                        output += "\n"
+                    output += f"**Map: {game.map_full_name}** ({short_game_id}):\n"
+                    output += pretty_format_team(
+                        game.team0_name, game.win_probability, team0_players
+                    )
+                    output += pretty_format_team(
+                        game.team1_name, 1 - game.win_probability, team1_players
+                    )
+                    minutes_ago = (
+                        datetime.now(timezone.utc)
+                        - game.created_at.replace(tzinfo=timezone.utc)
+                    ).seconds // 60
+                    output += f"@ {minutes_ago} minutes ago\n"
 
-    if len(output) == 0:
-        output = "No queues or games"
+        if len(output) == 0:
+            output = "No queues or games"
 
-    await send_message(
-        ctx.message.channel, embed_description=output, colour=Colour.blue()
-    )
+        await send_message(
+            ctx.message.channel, embed_description=output, colour=Colour.blue()
+        )
 
 
 def win_rate(wins, losses, ties):

@@ -78,52 +78,52 @@ async def send_message(
 
 
 async def update_current_map_to_next_map_in_rotation():
-    session = Session()
-    current_map: CurrentMap = session.query(CurrentMap).first()
-    rotation_maps: list[RotationMap] = session.query(RotationMap).order_by(RotationMap.created_at.asc()).all()  # type: ignore
-    if len(rotation_maps) > 0:
-        if current_map:
-            if RANDOM_MAP_ROTATION:
-                next_map = choice(rotation_maps)
-                while next_map.short_name == current_map.short_name:
+    with Session() as session:
+        current_map: CurrentMap = session.query(CurrentMap).first()
+        rotation_maps: list[RotationMap] = session.query(RotationMap).order_by(RotationMap.created_at.asc()).all()  # type: ignore
+        if len(rotation_maps) > 0:
+            if current_map:
+                if RANDOM_MAP_ROTATION:
                     next_map = choice(rotation_maps)
+                    while next_map.short_name == current_map.short_name:
+                        next_map = choice(rotation_maps)
+                else:
+                    next_rotation_map_index = (current_map.map_rotation_index + 1) % len(
+                        rotation_maps
+                    )
+                    next_map = rotation_maps[next_rotation_map_index]
+                    current_map.map_rotation_index = next_rotation_map_index
+                current_map.full_name = next_map.full_name
+                current_map.short_name = next_map.short_name
+                current_map.updated_at = datetime.now(timezone.utc)
+                channel = bot.get_channel(CHANNEL_ID)
+                if isinstance(channel, discord.TextChannel):
+                    await send_message(
+                        channel,
+                        embed_description=f"Map automatically rotated to **{next_map.full_name}**, all votes removed",
+                        colour=discord.Colour.blue(),
+                    )
+                session.query(MapVote).delete()
+                session.query(SkipMapVote).delete()
             else:
-                next_rotation_map_index = (current_map.map_rotation_index + 1) % len(
-                    rotation_maps
-                )
-                next_map = rotation_maps[next_rotation_map_index]
-                current_map.map_rotation_index = next_rotation_map_index
-            current_map.full_name = next_map.full_name
-            current_map.short_name = next_map.short_name
-            current_map.updated_at = datetime.now(timezone.utc)
-            channel = bot.get_channel(CHANNEL_ID)
-            if isinstance(channel, discord.TextChannel):
-                await send_message(
-                    channel,
-                    embed_description=f"Map automatically rotated to **{next_map.full_name}**, all votes removed",
-                    colour=discord.Colour.blue(),
-                )
-            session.query(MapVote).delete()
-            session.query(SkipMapVote).delete()
-        else:
-            if RANDOM_MAP_ROTATION:
-                next_map = choice(rotation_maps)
-                while next_map.short_name == current_map.short_name:
+                if RANDOM_MAP_ROTATION:
                     next_map = choice(rotation_maps)
-            else:
-                next_map = rotation_maps[0]
-            session.add(CurrentMap(0, next_map.full_name, next_map.short_name))
-            channel = bot.get_channel(CHANNEL_ID)
-            if isinstance(channel, discord.TextChannel):
-                await send_message(
-                    channel,
-                    embed_description=f"Map rotated to {next_map.full_name}, all votes removed",
-                    colour=discord.Colour.blue(),
-                )
-            session.query(MapVote).delete()
-            session.query(SkipMapVote).delete()
+                    while next_map.short_name == current_map.short_name:
+                        next_map = choice(rotation_maps)
+                else:
+                    next_map = rotation_maps[0]
+                session.add(CurrentMap(0, next_map.full_name, next_map.short_name))
+                channel = bot.get_channel(CHANNEL_ID)
+                if isinstance(channel, discord.TextChannel):
+                    await send_message(
+                        channel,
+                        embed_description=f"Map rotated to {next_map.full_name}, all votes removed",
+                        colour=discord.Colour.blue(),
+                    )
+                session.query(MapVote).delete()
+                session.query(SkipMapVote).delete()
 
-        session.commit()
+            session.commit()
 
 
 async def upload_stats_screenshot_selenium(ctx: Context, cleanup=True):
