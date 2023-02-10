@@ -281,20 +281,20 @@ async def map_rotation_task():
     """Rotate the map automatically, stopping on the 0th map
     TODO: tests
     """
-    session = Session()
-    current_map: CurrentMap | None = session.query(CurrentMap).first()
-    if not current_map:
-        return
+    with Session() as session:
+        current_map: CurrentMap | None = session.query(CurrentMap).first()
+        if not current_map:
+            return
 
-    if current_map.map_rotation_index == 0 and not config.RANDOM_MAP_ROTATION:
-        # Stop at the first map
-        return
+        if not config.RANDOM_MAP_ROTATION and current_map.map_rotation_index == 0:
+            # Stop at the first map
+            return
 
-    time_since_update: timedelta = datetime.now(
-        timezone.utc
-    ) - current_map.updated_at.replace(tzinfo=timezone.utc)
-    if (time_since_update.seconds // 60) > config.MAP_ROTATION_MINUTES:
-        await update_current_map_to_next_map_in_rotation()
+        time_since_update: timedelta = datetime.now(
+            timezone.utc
+        ) - current_map.updated_at.replace(tzinfo=timezone.utc)
+        if (time_since_update.seconds // 60) > config.MAP_ROTATION_MINUTES:
+            await update_current_map_to_next_map_in_rotation()
 
 
 @tasks.loop(seconds=1)
