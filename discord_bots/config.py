@@ -70,7 +70,7 @@ TRIBES_VOICE_CATEGORY_CHANNEL_ID: int = to_int2(key="TRIBES_VOICE_CATEGORY_CHANN
 admin_ids = os.getenv("SEED_ADMIN_IDS").split(",") if os.getenv("SEED_ADMIN_IDS") else []
 SEED_ADMIN_IDS: list[int] = list(filter(lambda x: x is not None, map(convert_to_int, admin_ids)))
 if not len(SEED_ADMIN_IDS):
-    print("SEED_ADMIN_IDS must be specified")
+    print("SEED_ADMIN_IDS must be specified. There must always be at least one initial admin to add others!")
     CONFIG_VALID = False
 
 # Database setup

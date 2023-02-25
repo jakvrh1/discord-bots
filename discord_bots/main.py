@@ -21,14 +21,21 @@ map_rotation_task.start()
 queue_waitlist_task.start()
 vote_passed_waitlist_task.start()
 
-session = Session()
-for seed_admin_id in SEED_ADMIN_IDS:
-    # There always has to be at least one initial admin to add others!
-    player = session.query(Player).filter(Player.id == seed_admin_id).first()
-    if player:
-        player.is_admin = True
-        session.commit()
-session.close()
+with Session() as session:
+    for seed_admin_id in SEED_ADMIN_IDS:
+        player = session.query(Player).filter(Player.id == seed_admin_id).first()
+        if player:
+            player.is_admin = True
+        else:
+            session.add(
+                Player(
+                    id=seed_admin_id,
+                    is_admin=True,
+                    name='AUTO_GENERATED_ADMIN',
+                    last_activity_at=datetime.now(timezone.utc),
+                )
+            )
+    session.commit()
 
 
 @bot.event
