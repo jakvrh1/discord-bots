@@ -39,6 +39,7 @@ The following are required
 - `DB_USER_NAME`, `DB_PASSWORD`, `DB_NAME`
 
 The following are optional
+- `LOG_FILE` - Fully qualified file to log to. If set the bot logs both to the console and to the rotating log file, else it only logs to the console. Highly Recommended.
 - `STATS_DIR`, `STATS_WIDTH`, `STATS_HEIGHT` - The bot assumes the last file dumped here is html file of the stats of the last game finished. It will take a screenshot and upload an image to the channel and delete it
 - `TWITCH_GAME_NAME`, `TWITCH_CLIENT_ID`, `TWITCH_CLIENT_SECRET` - These enable the `streams` command to list current streams of the specified game
 - `COMMAND_PREFIX` - Use a different prefix instead of `!`

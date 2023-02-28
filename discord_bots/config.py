@@ -79,6 +79,9 @@ DB_USER_NAME: str = to_string(key="DB_USER_NAME", required=True)
 DB_PASSWORD: str = to_string(key="DB_PASSWORD", required=True)
 
 # Functional setup
+LOG_FILE: str | None = to_string(key="LOG_FILE")
+if not LOG_FILE:
+    print("No log file set. All logs will be visible on the console only.")
 DEBUG: bool = to_bool(key="DEBUG", default=False)
 mock_command_users = os.getenv("MOCK_COMMAND_USERS").split(",") if os.getenv("MOCK_COMMAND_USERS") else []
 MOCK_COMMAND_USERS: list[int] = list(filter(lambda x: x is not None, map(convert_to_int, mock_command_users)))

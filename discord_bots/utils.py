@@ -17,6 +17,7 @@ from trueskill import Rating, global_env
 
 from discord_bots.bot import bot
 from discord_bots.config import CHANNEL_ID, STATS_DIR, STATS_HEIGHT, STATS_WIDTH, RANDOM_MAP_ROTATION
+from discord_bots.log import define_logger
 from discord_bots.models import (
     CurrentMap,
     MapVote,
@@ -25,6 +26,9 @@ from discord_bots.models import (
     Session,
     SkipMapVote,
 )
+
+log = define_logger(__name__)
+
 
 # Convenience mean function that can handle lists of 0 or 1 length
 def mean(values: list[any]) -> float:
@@ -35,7 +39,7 @@ def mean(values: list[any]) -> float:
 
 
 def pretty_format_team(
-    team_name: str, win_probability: float, players: list[Player]
+        team_name: str, win_probability: float, players: list[Player]
 ) -> str:
     player_names = ", ".join(sorted([player.name for player in players]))
     return f"**{team_name}** ({round(100 * win_probability, 1)}%): {player_names}\n"
@@ -46,13 +50,13 @@ def short_uuid(uuid: str) -> str:
 
 
 async def send_message(
-    channel: (DMChannel | GroupChannel | TextChannel),
-    content: str | None = None,
-    embed_description: str | None = None,
-    colour: Colour | None = None,
-    embed_content: bool = True,
-    embed_title: str | None = None,
-    embed_thumbnail: str | None = None,
+        channel: (DMChannel | GroupChannel | TextChannel),
+        content: str | None = None,
+        embed_description: str | None = None,
+        colour: Colour | None = None,
+        embed_content: bool = True,
+        embed_title: str | None = None,
+        embed_thumbnail: str | None = None,
 ):
     """
     :colour: red = fail, green = success, blue = informational
@@ -74,13 +78,14 @@ async def send_message(
     try:
         await channel.send(content=content, embed=embed)
     except Exception as e:
-        print("[send_message] exception:", e)
+        log.error(f"[send_message] exception: {e}")
 
 
 async def update_current_map_to_next_map_in_rotation():
     with Session() as session:
         current_map: CurrentMap = session.query(CurrentMap).first()
-        rotation_maps: list[RotationMap] = session.query(RotationMap).order_by(RotationMap.created_at.asc()).all()  # type: ignore
+        rotation_maps: list[RotationMap] = session.query(RotationMap).order_by(
+            RotationMap.created_at.asc()).all()  # type: ignore
         if len(rotation_maps) > 0:
             if current_map:
                 if RANDOM_MAP_ROTATION:

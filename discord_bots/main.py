@@ -2,8 +2,9 @@ from datetime import datetime, timezone
 
 from discord import Colour, Embed, Member, Message, Reaction
 from discord.abc import User
-from discord.ext.commands import CommandError, Context, UserInputError
+from discord.ext.commands import CommandError, CommandNotFound, Context, UserInputError
 
+from discord_bots.log import define_default_logger, define_logger
 from .bot import bot
 from discord_bots.config import API_KEY, COMMAND_PREFIX, CONFIG_VALID, CHANNEL_ID, SEED_ADMIN_IDS
 from .models import CustomCommand, Player, QueuePlayer, QueueWaitlistPlayer, Session
@@ -15,37 +16,43 @@ from .tasks import (
     vote_passed_waitlist_task,
 )
 
-add_player_task.start()
-afk_timer_task.start()
-map_rotation_task.start()
-queue_waitlist_task.start()
-vote_passed_waitlist_task.start()
+define_default_logger()
+log = define_logger(__name__)
 
-with Session() as session:
-    for seed_admin_id in SEED_ADMIN_IDS:
-        player = session.query(Player).filter(Player.id == seed_admin_id).first()
-        if player:
-            player.is_admin = True
-        else:
-            session.add(
-                Player(
-                    id=seed_admin_id,
-                    is_admin=True,
-                    name='AUTO_GENERATED_ADMIN',
-                    last_activity_at=datetime.now(timezone.utc),
+
+def create_seed_admins():
+    with Session() as session:
+        for seed_admin_id in SEED_ADMIN_IDS:
+            player = session.query(Player).filter(Player.id == seed_admin_id).first()
+            if player:
+                player.is_admin = True
+            else:
+                session.add(
+                    Player(
+                        id=seed_admin_id,
+                        is_admin=True,
+                        name='AUTO_GENERATED_ADMIN',
+                        last_activity_at=datetime.now(timezone.utc),
+                    )
                 )
-            )
-    session.commit()
+        session.commit()
 
 
 @bot.event
 async def on_ready():
-    print(f"Logged in as {bot.user} (ID: {bot.user.id})")
+    log.info(f"Logged in as {bot.user} (ID: {bot.user.id})")
+    add_player_task.start()
+    afk_timer_task.start()
+    map_rotation_task.start()
+    queue_waitlist_task.start()
+    vote_passed_waitlist_task.start()
 
 
 @bot.event
 async def on_command_error(ctx: Context, error: CommandError):
-    if isinstance(error, UserInputError):
+    if isinstance(error, CommandNotFound):
+        log.debug(f"[on_command_error] command: {ctx.command.name}, type: {type(error).__name__}, {error}")
+    elif isinstance(error, UserInputError):
         if ctx.command.usage:
             await ctx.channel.send(
                 embed=Embed(
@@ -62,9 +69,9 @@ async def on_command_error(ctx: Context, error: CommandError):
             )
     else:
         if ctx.command:
-            print("[on_command_error]:", error, ", command:", ctx.command.name)
+            log.info(f"[on_command_error] command: {ctx.command.name}, type: {type(error).__name__}, {error}")
         else:
-            print("[on_command_error]:", error)
+            log.info(f"[on_command_error] type: {type(error).__name__}, {error}")
 
 
 @bot.event
@@ -149,9 +156,10 @@ async def on_leave(member: Member):
 
 def main():
     if CONFIG_VALID:
+        create_seed_admins()
         bot.run(API_KEY)
     else:
-        print("You must provide a valid config!")
+        log.error("You must provide a valid config!")
 
 
 if __name__ == "__main__":

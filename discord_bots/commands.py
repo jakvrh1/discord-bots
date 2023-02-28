@@ -73,10 +73,6 @@ from .utils import (
     win_probability,
 )
 
-def debug_print(*args):
-    if config.DEBUG:
-        print(args)
-
 
 def get_even_teams(
     player_ids: list[int], team_size: int, is_rated: bool, queue_region_id: str | None
@@ -1087,7 +1083,6 @@ async def add(ctx: Context, *args):
                 try:
                     session.commit()
                 except IntegrityError as exc:
-                    print("integrity error?", exc)
                     session.rollback()
 
             current_time: datetime = datetime.now(timezone.utc)
