@@ -23,7 +23,7 @@ def define_logger(name="app"):
     log = logging.getLogger(name)
     log.propagate = False
     log.setLevel(level)
-    formatter = logging.Formatter("%(asctime)s [%(levelname)s:%(filename)12s:%(lineno)s] %(message)s")
+    formatter = logging.Formatter("%(asctime)s [%(levelname)s:%(filename)s:%(lineno)s] %(message)s")
     console_logger = logging.StreamHandler()
     console_logger.setLevel(level)
     console_logger.setFormatter(formatter)
