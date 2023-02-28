@@ -51,7 +51,7 @@ async def on_ready():
 @bot.event
 async def on_command_error(ctx: Context, error: CommandError):
     if isinstance(error, CommandNotFound):
-        log.debug(f"[on_command_error] command: {ctx.command.name}, type: {type(error).__name__}, {error}")
+        log.debug(f"[on_command_error] {error}")
     elif isinstance(error, UserInputError):
         if ctx.command.usage:
             await ctx.channel.send(
