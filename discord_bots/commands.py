@@ -45,7 +45,6 @@ from .models import (
     InProgressGamePlayer,
     MapVote,
     Player,
-    PlayerDecay,
     PlayerRegionTrueskill,
     Queue,
     QueueNotification,
@@ -1607,60 +1606,6 @@ async def createqueue(ctx: Context, queue_name: str, queue_size: int):
         )
 
 
-@bot.command()
-@commands.check(is_admin)
-async def decayplayer(ctx: Context, member: Member, decay_amount_percent: str):
-    message = ctx.message
-    """
-    Manually adjust a player's trueskill rating downward by a percentage
-    """
-    if not decay_amount_percent.endswith("%"):
-        await send_message(
-            message.channel,
-            embed_description="Decay amount must end with %",
-            colour=Colour.red(),
-        )
-        return
-
-    decay_amount = int(decay_amount_percent[:-1])
-    if decay_amount < 1 or decay_amount > 100:
-        await send_message(
-            message.channel,
-            embed_description="Decay amount must be between 1-100",
-            colour=Colour.red(),
-        )
-        return
-
-    session = Session()
-    player: Player = (
-        session.query(Player).filter(Player.id == message.mentions[0].id).first()
-    )
-    rated_trueskill_mu_before = player.rated_trueskill_mu
-    rated_trueskill_mu_after = player.rated_trueskill_mu * (100 - decay_amount) / 100
-    unrated_trueskill_mu_before = player.unrated_trueskill_mu
-    unrated_trueskill_mu_after = (
-        player.unrated_trueskill_mu * (100 - decay_amount) / 100
-    )
-    player.rated_trueskill_mu = rated_trueskill_mu_after
-    player.unrated_trueskill_mu = unrated_trueskill_mu_after
-    await send_message(
-        message.channel,
-        embed_description=f"{escape_markdown(member.name)} decayed by {decay_amount}%",
-        colour=Colour.green(),
-    )
-    session.add(
-        PlayerDecay(
-            player.id,
-            decay_amount,
-            rated_trueskill_mu_before=rated_trueskill_mu_before,
-            rated_trueskill_mu_after=rated_trueskill_mu_after,
-            unrated_trueskill_mu_before=unrated_trueskill_mu_before,
-            unrated_trueskill_mu_after=unrated_trueskill_mu_after,
-        )
-    )
-    session.commit()
-
-
 @bot.command(name="del")
 async def del_(ctx: Context, *args):
     """
@@ -2298,22 +2243,6 @@ async def listnotifications(ctx: Context):
 
 
 @bot.command()
-@commands.check(is_admin)
-async def listplayerdecays(ctx: Context, member: Member):
-    message = ctx.message
-    session = Session()
-    player = session.query(Player).filter(Player.id == member.id).first()
-    player_decays: list[PlayerDecay] = session.query(PlayerDecay).filter(
-        PlayerDecay.player_id == player.id
-    )
-    output = f"Decays for {escape_markdown(player.name)}:"
-    for player_decay in player_decays:
-        output += f"\n- {player_decay.decayed_at.strftime('%Y-%m-%d')} - Amount: {player_decay.decay_percentage}%"
-
-    await send_message(message.channel, embed_description=output, colour=Colour.blue())
-
-
-@bot.command()
 async def listqueueregions(ctx: Context):
     output = "Regions:"
     session = Session()
@@ -2936,23 +2865,6 @@ async def setadddelay(ctx: Context, delay_seconds: int):
     await send_message(
         message.channel,
         embed_description=f"Delay between games set to {config.RE_ADD_DELAY_SECONDS}",
-        colour=Colour.green(),
-    )
-
-
-@bot.command()
-@commands.check(is_admin)
-async def setbias(ctx: Context, member: Member, amount: float):
-    if amount < -100 or amount > 100:
-        await send_message(
-            ctx.message.channel,
-            embed_description=f"Amount must be between -100 and 100",
-            colour=Colour.red(),
-        )
-        return
-    await send_message(
-        ctx.message.channel,
-        embed_description=f"Team bias for {member.name} set to `{amount}%`",
         colour=Colour.green(),
     )
 
