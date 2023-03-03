@@ -2116,7 +2116,7 @@ async def isolatequeue(ctx: Context, queue_name: str):
 async def leaderboard(ctx: Context, *args):
     if not config.SHOW_TRUESKILL:
         await send_message(
-            ctx.message.channel, embed_description="Command disabled", colour=Colour.red()
+            ctx.message.channel, embed_description="Displaying trueskill is disabled", colour=Colour.red()
         )
         return
 
@@ -2142,7 +2142,10 @@ async def leaderboard(ctx: Context, *args):
             )
             for i, prt in enumerate(top_10_prts, 1):
                 player: Player = session.query(Player).filter(Player.id == prt.player_id).first()
-                output += f"\n{i}. {round(prt.leaderboard_trueskill, 1)} - {player.name} _(mu: {round(prt.rated_trueskill_mu, 1)}, sigma: {round(prt.rated_trueskill_sigma, 1)})_"
+                output += f"\n{i}. {round(prt.leaderboard_trueskill, 1)} - {player.name}"
+                if config.SHOW_TRUESKILL_DETAILS:
+                    output += f" _(mu: {round(prt.rated_trueskill_mu, 1)}, sigma: {round(prt.rated_trueskill_sigma, 1)})_"
+
             output += "\n"
         pass
     else:
@@ -2151,7 +2154,9 @@ async def leaderboard(ctx: Context, *args):
             session.query(Player).order_by(Player.leaderboard_trueskill.desc()).limit(10)
         )
         for i, player in enumerate(top_10_players, 1):
-            output += f"\n{i}. {round(player.leaderboard_trueskill, 1)} - {player.name} _(mu: {round(player.rated_trueskill_mu, 1)}, sigma: {round(player.rated_trueskill_sigma, 1)})_"
+            output += f"\n{i}. {round(player.leaderboard_trueskill, 1)} - {player.name}"
+            if config.SHOW_TRUESKILL_DETAILS:
+                output += f" _(mu: {round(player.rated_trueskill_mu, 1)}, sigma: {round(player.rated_trueskill_sigma, 1)})_"
     session.close()
     output += "\n(Ranks calculated using the formula: _mu - 3*sigma_)"
     await send_message(
@@ -3001,13 +3006,15 @@ async def showgame(ctx: Context, game_id: str):
 
 @bot.command()
 async def showgamedebug(ctx: Context, game_id: str):
-    await send_message(
-        ctx.message.channel,
-        embed_description="Ice cream machine under maintenance",
-        colour=Colour.red(),
-    )
-    return
     message = ctx.message
+    if message.author.id not in config.MOCK_COMMAND_USERS:
+        await send_message(
+            message.channel,
+            embed_description="Only special people can use this command",
+            colour=Colour.red(),
+        )
+        return
+
     session = Session()
     finished_game = (
         session.query(FinishedGame)
@@ -3289,23 +3296,26 @@ async def stats(ctx: Context):
             ]
         )
     )
-    trueskill_index = bisect(
-        trueskills,
-        round(player.rated_trueskill_mu - 3 * player.rated_trueskill_sigma, 2),
-    )
-    trueskill_ratio = (len(trueskills) - trueskill_index) / len(trueskills)
-    if trueskill_ratio <= 0.05:
-        trueskill_pct = "Top 5%"
-    elif trueskill_ratio <= 0.10:
-        trueskill_pct = "Top 10%"
-    elif trueskill_ratio <= 0.25:
-        trueskill_pct = "Top 25%"
-    elif trueskill_ratio <= 0.50:
-        trueskill_pct = "Top 50%"
-    elif trueskill_ratio <= 0.75:
-        trueskill_pct = "Top 75%"
+    if len(trueskills) > 0:
+        trueskill_index = bisect(
+            trueskills,
+            round(player.rated_trueskill_mu - 3 * player.rated_trueskill_sigma, 2),
+        )
+        trueskill_ratio = (len(trueskills) - trueskill_index) / len(trueskills)
+        if trueskill_ratio <= 0.05:
+            trueskill_pct = "Top 5%"
+        elif trueskill_ratio <= 0.10:
+            trueskill_pct = "Top 10%"
+        elif trueskill_ratio <= 0.25:
+            trueskill_pct = "Top 25%"
+        elif trueskill_ratio <= 0.50:
+            trueskill_pct = "Top 50%"
+        elif trueskill_ratio <= 0.75:
+            trueskill_pct = "Top 75%"
+        else:
+            trueskill_pct = "Top 100%"
     else:
-        trueskill_pct = "Top 100%"
+        trueskill_pct = "No games found"
 
     def is_win(finished_game: FinishedGame) -> bool:
         if (
@@ -3384,11 +3394,15 @@ async def stats(ctx: Context):
                 .filter(QueueRegion.id == prt.queue_region_id)
                 .first()
             )
-            output += f"\n**{queue_region.name}**: {round(prt.rated_trueskill_mu - 3 * prt.rated_trueskill_sigma, 1)} _(mu: {round(prt.rated_trueskill_mu, 1)}, sigma: {round(prt.rated_trueskill_sigma, 1)})_"
+            output += f"\n**{queue_region.name}**: {round(prt.rated_trueskill_mu - 3 * prt.rated_trueskill_sigma, 1)}"
+            if config.SHOW_TRUESKILL_DETAILS:
+                output += f" _(mu: {round(prt.rated_trueskill_mu, 1)}, sigma: {round(prt.rated_trueskill_sigma, 1)})_"
 
         # This assumes that if a community uses regions then they'll use regions exclusively
         if not player_region_trueskills:
-            output += f"\nNo region: {round(player.rated_trueskill_mu - 3 * player.rated_trueskill_sigma, 1)} _(mu: {round(prt.rated_trueskill_mu, 1)}, sigma: {round(prt.rated_trueskill_sigma, 1)})_"
+            output += f"\nNo region: {round(player.rated_trueskill_mu - 3 * player.rated_trueskill_sigma, 1)}"
+            if config.SHOW_TRUESKILL_DETAILS:
+                output += f" _(mu: {round(player.rated_trueskill_mu, 1)}, sigma: {round(player.rated_trueskill_sigma, 1)})_"
     else:
         output += f"**Trueskill:** {trueskill_pct}"
     output += f"\n\n**Wins / Losses / Ties / Total:**"
@@ -3927,11 +3941,17 @@ async def voteskip(ctx: Context):
             colour=Colour.green(),
         )
 
+
 @bot.command()
 @commands.check(is_admin)
 async def forceskip(ctx: Context):
     message = ctx.message
-    if message.author.id not in [115204465589616646, 347125254050676738]:
+    if message.author.id not in config.MOCK_COMMAND_USERS:
+        await send_message(
+            message.channel,
+            embed_description="Only special people can use this command",
+            colour=Colour.red(),
+        )
         return
     """
     A player votes to go to the next map in rotation
@@ -3962,7 +3982,7 @@ async def forceskip(ctx: Context):
                     channel_id=message.channel.id,
                     guild_id=message.guild.id,
                     end_waitlist_at=datetime.now(timezone.utc)
-                    + timedelta(seconds=config.RE_ADD_DELAY),
+                    + timedelta(seconds=config.RE_ADD_DELAY_SECONDS),
                 )
             )
     session.commit()
