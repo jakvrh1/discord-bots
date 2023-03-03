@@ -2,7 +2,7 @@ from datetime import datetime, timezone
 
 from discord import Colour, Embed, Member, Message, Reaction
 from discord.abc import User
-from discord.ext.commands import CommandError, CommandNotFound, Context, UserInputError
+from discord.ext.commands import CommandError, CommandNotFound, Context, UserInputError, CheckFailure
 
 from discord_bots.log import define_default_logger, define_logger
 from .bot import bot
@@ -50,7 +50,7 @@ async def on_ready():
 
 @bot.event
 async def on_command_error(ctx: Context, error: CommandError):
-    if isinstance(error, CommandNotFound):
+    if isinstance(error, CommandNotFound) or isinstance(error, CheckFailure):
         log.debug(f"[on_command_error] {error}")
     elif isinstance(error, UserInputError):
         if ctx.command.usage:
@@ -69,9 +69,10 @@ async def on_command_error(ctx: Context, error: CommandError):
             )
     else:
         if ctx.command:
-            log.info(f"[on_command_error] command: {ctx.command.name}, type: {type(error).__name__}, {error}")
+            log.info(f"[on_command_error] command: {ctx.command.name}, type: {type(error).__name__}, {error}",
+                     exc_info=error)
         else:
-            log.info(f"[on_command_error] type: {type(error).__name__}, {error}")
+            log.info(f"[on_command_error] type: {type(error).__name__}, {error}", exc_info=error)
 
 
 @bot.event
