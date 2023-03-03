@@ -87,7 +87,7 @@ mock_command_users = os.getenv("MOCK_COMMAND_USERS").split(",") if os.getenv("MO
 MOCK_COMMAND_USERS: list[int] = list(filter(lambda x: x is not None, map(convert_to_int, mock_command_users)))
 COMMAND_PREFIX: str = to_string(key="COMMAND_PREFIX", default="!")
 SHOW_TRUESKILL: bool = to_bool(key="SHOW_TRUESKILL", default=False)
-SHOW_TRUESKILL_DETAILS: bool = False
+SHOW_TRUESKILL_DETAILS: bool = to_bool(key="SHOW_TRUESKILL_DETAILS", default=False)
 RANDOM_MAP_ROTATION: bool = to_bool(key="RANDOM_MAP_ROTATION", default=False)
 AFK_TIME_MINUTES: int = to_int2(key="AFK_TIME_MINUTES", default=45)
 MAP_ROTATION_MINUTES: int = to_int2(key="MAP_ROTATION_MINUTES", default=60)

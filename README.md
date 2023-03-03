@@ -47,6 +47,7 @@ The following are optional
 - `RANDOM_MAP_ROTATION` - Declare this for the map rotation to be random
 - `DEFAULT_TRUESKILL_MU`, `DEFAULT_TRUESKILL_SIGMA` - Declare this to set the default trueskill value for new players
 - `SHOW_TRUESKILL` - Shows player trueskill when making teams, enables the trueskill leaderboard, etc.
+- `SHOW_TRUESKILL_DETAILS` - Additionally display Mu and Sigma values
 - `AFK_TIME_MINUTES` - Timeout after which inactive users are autodeleted from queues
 - `MAP_ROTATION_MINUTES` - Time between automatic map rotationss
 - `MAP_VOTE_THRESHOLD` - Amount of players needed in order to vote for or skip a map
