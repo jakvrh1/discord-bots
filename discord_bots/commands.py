@@ -3407,10 +3407,10 @@ async def stats(ctx: Context):
         output += f"**Trueskill:** {trueskill_pct}"
     output += f"\n\n**Wins / Losses / Ties / Total:**"
     output += f"\n**Lifetime:** {len(wins)} / {len(losses)} / {len(ties)} / {total_games} _({winrate}%)_"
-    output += f"\n**Last month:** {wins_last_month} / {losses_last_month} / {ties_last_month} / {len(games_last_month)} _({winrate_last_month}%)_"
-    output += f"\n**Last three months:** {wins_last_three_months} / {losses_last_three_months} / {ties_last_three_months} / {len(games_last_three_months)} _({winrate_last_three_months}%)_"
-    output += f"\n**Last six months:** {wins_last_six_months} / {losses_last_six_months} / {ties_last_six_months} / {len(games_last_six_months)} _({winrate_last_six_months}%)_"
-    output += f"\n**Last year:** {wins_last_year} / {losses_last_year} / {ties_last_year} / {len(games_last_year)} _({winrate_last_year}%)_"
+    output += f"\n**Last 30 days:** {wins_last_month} / {losses_last_month} / {ties_last_month} / {len(games_last_month)} _({winrate_last_month}%)_"
+    output += f"\n**Last 90 days:** {wins_last_three_months} / {losses_last_three_months} / {ties_last_three_months} / {len(games_last_three_months)} _({winrate_last_three_months}%)_"
+    output += f"\n**Last 180 days:** {wins_last_six_months} / {losses_last_six_months} / {ties_last_six_months} / {len(games_last_six_months)} _({winrate_last_six_months}%)_"
+    output += f"\n**Last 365 days:** {wins_last_year} / {losses_last_year} / {ties_last_year} / {len(games_last_year)} _({winrate_last_year}%)_"
 
     await send_message(
         channel=ctx.message.channel,
