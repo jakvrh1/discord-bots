@@ -1,8 +1,10 @@
+import math
 from datetime import datetime, timezone
 
 from discord import Colour, Embed, Member, Message, Reaction
 from discord.abc import User
 from discord.ext.commands import CommandError, CommandNotFound, Context, UserInputError, CheckFailure
+from discord.ext.commands.errors import CommandOnCooldown
 
 from discord_bots.log import define_default_logger, define_logger
 from .bot import bot
@@ -52,6 +54,26 @@ async def on_ready():
 async def on_command_error(ctx: Context, error: CommandError):
     if isinstance(error, CommandNotFound) or isinstance(error, CheckFailure):
         log.debug(f"[on_command_error] {error}")
+    elif isinstance(error, CommandOnCooldown):
+        def singular_or_plural(number, singular, plural):
+            return singular if number == 1 else plural
+
+        if error.retry_after > 3600:
+            in_hours = int(error.retry_after // 3600)
+            available_in = f"{in_hours} {singular_or_plural(in_hours, 'hour', 'hours')}"
+        elif error.retry_after > 60:
+            in_minutes = int(error.retry_after // 60)
+            available_in = f"{in_minutes} {singular_or_plural(in_minutes, 'minute', 'minutes')}"
+        else:
+            in_seconds = math.ceil(error.retry_after)
+            available_in = f"{in_seconds} {singular_or_plural(in_seconds, 'second', 'seconds')}"
+
+        await ctx.channel.send(
+            embed=Embed(
+                description=f"Command {COMMAND_PREFIX}{ctx.command.name} on cooldown. Available in about {available_in}.",
+                colour=Colour.red(),
+            )
+        )
     elif isinstance(error, UserInputError):
         if ctx.command.usage:
             await ctx.channel.send(
