@@ -1541,19 +1541,6 @@ async def createcommand(ctx: Context, name: str, *, output: str):
 
 @bot.command()
 @commands.check(is_admin)
-async def createdbbackup(ctx: Context):
-    message = ctx.message
-    date_string = datetime.now().strftime("%Y-%m-%d")
-    copyfile(f"{config.DB_NAME}.db", f"{config.DB_NAME}_{date_string}.db")
-    await send_message(
-        message.channel,
-        embed_description=f"Backup made to {config.DB_NAME}_{date_string}.db",
-        colour=Colour.green(),
-    )
-
-
-@bot.command()
-@commands.check(is_admin)
 async def restart(ctx):
     await ctx.send("Restarting bot... ")
     os.execv(sys.executable, ["python", "-m", "discord_bots.main"])
@@ -2213,21 +2200,6 @@ async def listbans(ctx: Context):
 
 
 @bot.command()
-@commands.check(is_admin)
-async def listdbbackups(ctx: Context):
-    message = ctx.message
-    output = "Backups:"
-    for filename in glob("tribes_*.db"):
-        output += f"\n- {filename}"
-
-    await send_message(
-        message.channel,
-        embed_description=output,
-        colour=Colour.blue(),
-    )
-
-
-@bot.command()
 async def listmaprotation(ctx: Context):
     message = ctx.message
     output = "Map rotation:"
@@ -2702,26 +2674,6 @@ async def removequeue(ctx: Context, queue_name: str):
             embed_description=f"Queue not found: {queue.name}",
             colour=Colour.red(),
         )
-
-
-@bot.command()
-@commands.check(is_admin)
-async def removedbbackup(ctx: Context, db_filename: str):
-    message = ctx.message
-    if not db_filename.startswith("tribes") or not db_filename.endswith(".db"):
-        await send_message(
-            message.channel,
-            embed_description="Filename must be of the format tribes_{date}.db",
-            colour=Colour.red(),
-        )
-        return
-
-    remove(db_filename)
-    await send_message(
-        message.channel,
-        embed_description=f"DB backup {db_filename} removed",
-        colour=Colour.green(),
-    )
 
 
 @bot.command()
