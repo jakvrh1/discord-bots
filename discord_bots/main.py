@@ -6,9 +6,9 @@ from discord.abc import User
 from discord.ext.commands import CommandError, CommandNotFound, Context, UserInputError, CheckFailure
 from discord.ext.commands.errors import CommandOnCooldown
 
+from discord_bots.config import API_KEY, COMMAND_PREFIX, CONFIG_VALID, CHANNEL_ID, SEED_ADMIN_IDS
 from discord_bots.log import define_default_logger, define_logger
 from .bot import bot
-from discord_bots.config import API_KEY, COMMAND_PREFIX, CONFIG_VALID, CHANNEL_ID, SEED_ADMIN_IDS
 from .models import CustomCommand, Player, QueuePlayer, QueueWaitlistPlayer, Session
 from .tasks import (
     add_player_task,

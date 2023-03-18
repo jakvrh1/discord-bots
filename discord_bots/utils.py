@@ -8,9 +8,9 @@ from random import choice
 
 import discord
 import imgkit
+from PIL import Image
 from discord import Colour, DMChannel, Embed, GroupChannel, TextChannel
 from discord.ext.commands.context import Context
-from PIL import Image
 from selenium import webdriver
 from selenium.webdriver.firefox.options import Options as FirefoxOptions
 from trueskill import Rating, global_env
@@ -20,14 +20,24 @@ from discord_bots.config import CHANNEL_ID, STATS_DIR, STATS_HEIGHT, STATS_WIDTH
 from discord_bots.log import define_logger
 from discord_bots.models import (
     CurrentMap,
+    Map,
     MapVote,
     Player,
-    RotationMap,
     Session,
     SkipMapVote,
 )
 
 log = define_logger(__name__)
+
+
+def get_current_map() -> tuple[CurrentMap, Map] | tuple[None, None]:
+    with Session() as session:
+        current_map: CurrentMap = session.query(CurrentMap).first()
+        if current_map:
+            current_map_full: Map = session.query(Map).join(CurrentMap).filter(CurrentMap.map_id == Map.id).first()
+            return current_map, current_map_full
+        else:
+            return None, None
 
 
 # Convenience mean function that can handle lists of 0 or 1 length
@@ -83,51 +93,37 @@ async def send_message(
 
 async def update_current_map_to_next_map_in_rotation():
     with Session() as session:
-        current_map: CurrentMap = session.query(CurrentMap).first()
-        rotation_maps: list[RotationMap] = session.query(RotationMap).order_by(
-            RotationMap.created_at.asc()).all()  # type: ignore
-        if len(rotation_maps) > 0:
-            if current_map:
-                if RANDOM_MAP_ROTATION:
-                    next_map = choice(rotation_maps)
-                    while next_map.short_name == current_map.short_name:
-                        next_map = choice(rotation_maps)
-                else:
-                    next_rotation_map_index = (current_map.map_rotation_index + 1) % len(
-                        rotation_maps
-                    )
-                    next_map = rotation_maps[next_rotation_map_index]
-                    current_map.map_rotation_index = next_rotation_map_index
-                current_map.full_name = next_map.full_name
-                current_map.short_name = next_map.short_name
-                current_map.updated_at = datetime.now(timezone.utc)
-                channel = bot.get_channel(CHANNEL_ID)
-                if isinstance(channel, discord.TextChannel):
-                    await send_message(
-                        channel,
-                        embed_description=f"Map automatically rotated to **{next_map.full_name}**, all votes removed",
-                        colour=discord.Colour.blue(),
-                    )
-                session.query(MapVote).delete()
-                session.query(SkipMapVote).delete()
-            else:
-                if RANDOM_MAP_ROTATION:
-                    next_map = choice(rotation_maps)
-                    while next_map.short_name == current_map.short_name:
-                        next_map = choice(rotation_maps)
-                else:
-                    next_map = rotation_maps[0]
-                session.add(CurrentMap(0, next_map.full_name, next_map.short_name))
-                channel = bot.get_channel(CHANNEL_ID)
-                if isinstance(channel, discord.TextChannel):
-                    await send_message(
-                        channel,
-                        embed_description=f"Map rotated to {next_map.full_name}, all votes removed",
-                        colour=discord.Colour.blue(),
-                    )
-                session.query(MapVote).delete()
-                session.query(SkipMapVote).delete()
+        current_map, current_map_full = get_current_map()
+        current_map_id = current_map.map_id if current_map else 'DUMMY'
+        current_rotation_index = current_map_full.rotation_index if current_map_full else -1
 
+        rotation_maps: list[Map] = session.query(Map).filter(Map.rotation_weight > 0,
+                                                             Map.id != current_map_id).order_by(
+            Map.rotation_index.asc()).all()  # type: ignore
+        if len(rotation_maps) > 0:
+            if RANDOM_MAP_ROTATION:
+                next_map = choice(rotation_maps)
+                while next_map.id == current_map_id:
+                    next_map = choice(rotation_maps)
+            else:
+                next_map = next(filter(lambda x: x.rotation_index > current_rotation_index, rotation_maps), None) or \
+                           rotation_maps[0]
+
+            if current_map:
+                current_map.map_id = next_map.id
+                current_map.updated_at = datetime.now(timezone.utc)
+            else:
+                session.add(CurrentMap(next_map.id))
+
+            channel = bot.get_channel(CHANNEL_ID)
+            if isinstance(channel, discord.TextChannel):
+                await send_message(
+                    channel,
+                    embed_description=f"Map automatically rotated to **{next_map.full_name}**, all votes removed",
+                    colour=discord.Colour.blue(),
+                )
+            session.query(MapVote).delete()
+            session.query(SkipMapVote).delete()
             session.commit()
 
 

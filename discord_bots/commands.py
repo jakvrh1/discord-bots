@@ -1,29 +1,25 @@
 import heapq
 import os
 import sys
-
 from bisect import bisect
 from collections import defaultdict
 from datetime import datetime, timedelta, timezone
-from glob import glob
 from itertools import combinations
 from math import floor
-from os import remove
-from random import choice, randint, random, shuffle
-from shutil import copyfile
+from random import randint, random, shuffle
 from tempfile import NamedTemporaryFile
 from typing import Union
 
 import discord
 import imgkit
 import numpy
+from PIL import Image
 from discord import Colour, DMChannel, Embed, GroupChannel, Message, TextChannel
 from discord.ext import commands
 from discord.ext.commands.context import Context
 from discord.guild import Guild
 from discord.member import Member
 from discord.utils import escape_markdown
-from PIL import Image
 from sqlalchemy.exc import IntegrityError
 from trueskill import Rating, rate
 
@@ -32,7 +28,6 @@ from discord_bots.utils import (
     upload_stats_screenshot_imgkit,
     upload_stats_screenshot_selenium,
 )
-
 from .bot import bot
 from .models import (
     AdminRole,
@@ -53,17 +48,16 @@ from .models import (
     QueueRole,
     QueueWaitlist,
     QueueWaitlistPlayer,
-    RotationMap,
     Session,
     SkipMapVote,
-    VoteableMap,
     VotePassedWaitlist,
-    VotePassedWaitlistPlayer,
+    VotePassedWaitlistPlayer, Map,
 )
 from .names import generate_be_name, generate_ds_name
 from .queues import AddPlayerQueueMessage, add_player_queue
 from .twitch import twitch
 from .utils import (
+    get_current_map,
     mean,
     pretty_format_team,
     send_message,
@@ -74,7 +68,7 @@ from .utils import (
 
 
 def get_even_teams(
-    player_ids: list[int], team_size: int, is_rated: bool, queue_region_id: str | None
+        player_ids: list[int], team_size: int, is_rated: bool, queue_region_id: str | None
 ) -> tuple[list[Player], float]:
     """
     TODO: Tests
@@ -183,11 +177,11 @@ def get_even_teams(
 # Return n of the most even or least even teams
 # For best teams, use direction = 1, for worst teams use direction = -1
 def get_n_teams(
-    players: list[Player],
-    team_size: int,
-    is_rated: bool,
-    n: int,
-    direction: int = 1,
+        players: list[Player],
+        team_size: int,
+        is_rated: bool,
+        n: int,
+        direction: int = 1,
 ) -> list[tuple[list[Player], float]]:
     teams: list[tuple[float, list[Player]]] = []
 
@@ -237,13 +231,13 @@ def get_n_teams(
 
 
 def get_n_best_teams(
-    players: list[Player], team_size: int, is_rated: bool, n: int
+        players: list[Player], team_size: int, is_rated: bool, n: int
 ) -> list[tuple[list[Player], float]]:
     return get_n_teams(players, team_size, is_rated, n, 1)
 
 
 def get_n_worst_teams(
-    players: list[Player], team_size: int, is_rated: bool, n: int
+        players: list[Player], team_size: int, is_rated: bool, n: int
 ) -> list[tuple[list[Player], float]]:
     return get_n_teams(players, team_size, is_rated, n, -1)
 
@@ -251,11 +245,11 @@ def get_n_worst_teams(
 # Return n of the most even or least even teams
 # For best teams, use direction = 1, for worst teams use direction = -1
 def get_n_finished_game_teams(
-    fgps: list[FinishedGamePlayer],
-    team_size: int,
-    is_rated: bool,
-    n: int,
-    direction: int = 1,
+        fgps: list[FinishedGamePlayer],
+        team_size: int,
+        is_rated: bool,
+        n: int,
+        direction: int = 1,
 ) -> list[tuple[list[FinishedGamePlayer], float]]:
     teams: list[tuple[float, list[FinishedGamePlayer]]] = []
 
@@ -313,22 +307,22 @@ def get_n_finished_game_teams(
 
 
 def get_n_best_finished_game_teams(
-    fgps: list[FinishedGamePlayer], team_size: int, is_rated: bool, n: int
+        fgps: list[FinishedGamePlayer], team_size: int, is_rated: bool, n: int
 ) -> list[tuple[list[FinishedGamePlayer], float]]:
     return get_n_finished_game_teams(fgps, team_size, is_rated, n, 1)
 
 
 def get_n_worst_finished_game_teams(
-    fgps: list[FinishedGamePlayer], team_size: int, is_rated: bool, n: int
+        fgps: list[FinishedGamePlayer], team_size: int, is_rated: bool, n: int
 ) -> list[tuple[list[FinishedGamePlayer], float]]:
     return get_n_finished_game_teams(fgps, team_size, is_rated, n, -1)
 
 
 async def add_player_to_queue(
-    queue_id: str,
-    player_id: int,
-    channel: TextChannel | DMChannel | GroupChannel,
-    guild: Guild,
+        queue_id: str,
+        player_id: int,
+        channel: TextChannel | DMChannel | GroupChannel,
+        guild: Guild,
 ) -> tuple[bool, bool]:
     """
     Helper function to add player to a queue and pop if needed.
@@ -393,11 +387,11 @@ async def add_player_to_queue(
             average_trueskill = mean(
                 list(map(lambda x: x.unrated_trueskill_mu, players))
             )
-        current_map: CurrentMap | None = session.query(CurrentMap).first()
+        current_map, current_map_full = get_current_map()
         game = InProgressGame(
             average_trueskill=average_trueskill,
-            map_full_name=current_map.full_name if current_map else "",
-            map_short_name=current_map.short_name if current_map else "",
+            map_full_name=current_map_full.full_name if current_map_full else "",
+            map_short_name=current_map_full.short_name if current_map_full else "",
             queue_id=queue.id,
             team0_name=generate_be_name(),
             team1_name=generate_ds_name(),
@@ -406,7 +400,7 @@ async def add_player_to_queue(
         session.add(game)
 
         team0_players = players[: len(players) // 2]
-        team1_players = players[len(players) // 2 :]
+        team1_players = players[len(players) // 2:]
 
         short_game_id = short_uuid(game.id)
         message_content = f"Game '{queue.name}' ({short_game_id}) has begun!"
@@ -559,9 +553,9 @@ async def is_admin(ctx: Context):
 
 
 def mock_teams_str(
-    team0_players: list[Player],
-    team1_players: list[Player],
-    is_rated: bool,
+        team0_players: list[Player],
+        team1_players: list[Player],
+        is_rated: bool,
 ) -> str:
     """
     Helper method to debug print teams if these were the players
@@ -628,9 +622,9 @@ def mock_teams_str(
 
 
 def mock_finished_game_teams_str(
-    team0_fg_players: list[FinishedGamePlayer],
-    team1_fg_players: list[FinishedGamePlayer],
-    is_rated: bool,
+        team0_fg_players: list[FinishedGamePlayer],
+        team1_fg_players: list[FinishedGamePlayer],
+        is_rated: bool,
 ) -> str:
     """
     Helper method to debug print teams if these were the players
@@ -998,17 +992,12 @@ def get_player_game(player_id: int, session=None) -> InProgressGame | None:
 def map_status_str(full_status: bool) -> str:
     with Session() as session:
         output = ""
-        current_map: CurrentMap | None = session.query(CurrentMap).first()
+        current_map, current_map_full = get_current_map()
         if current_map:
-            output += f"**Next map: {current_map.full_name} ({current_map.short_name})**\n"
+            output += f"**Next map: {current_map_full.full_name} ({current_map_full.short_name})**\n"
 
             if full_status:
-                rotation_maps: list[RotationMap] = session.query(RotationMap).order_by(RotationMap.created_at.asc()).all()  # type: ignore
-                next_rotation_map_index = (current_map.map_rotation_index + 1) % len(
-                    rotation_maps
-                )
-                next_map = rotation_maps[next_rotation_map_index]
-
+                # TODO next-map logic is duplicated from utils.py -> update_current_map_to_next_map_in_rotation
                 time_since_update: timedelta = datetime.now(
                     timezone.utc
                 ) - current_map.updated_at.replace(tzinfo=timezone.utc)
@@ -1018,17 +1007,25 @@ def map_status_str(full_status: bool) -> str:
                 if config.RANDOM_MAP_ROTATION:
                     output += f"_(Auto-rotates to a random map in {time_until_rotation} minutes)_\n"
                 else:
+                    current_map_id = current_map.map_id if current_map else 'DUMMY'
+                    current_rotation_index = current_map_full.rotation_index if current_map_full else -1
+                    rotation_maps: list[Map] = session.query(Map).filter(Map.rotation_weight > 0,
+                                                                         Map.id != current_map_id).order_by(
+                        Map.rotation_index.asc()).all()  # type: ignore
+                    next_map = next(filter(lambda x: x.rotation_index > current_rotation_index, rotation_maps), None) or \
+                               rotation_maps[0]
                     if current_map.map_rotation_index == 0:
                         output += f"_Map after next: {next_map.full_name} ({next_map.short_name})_\n"
                     else:
                         output += f"_Map after next (auto-rotates in {time_until_rotation} minutes): {next_map.full_name} ({next_map.short_name})_\n"
+
                 skip_map_votes: list[SkipMapVote] = session.query(SkipMapVote).all()
                 output += f"_Votes to skip (voteskip): [{len(skip_map_votes)}/{config.MAP_VOTE_THRESHOLD}]_\n"
 
                 map_votes: list[MapVote] = session.query(MapVote).all()
                 voted_map_ids: list[str] = [map_vote.voteable_map_id for map_vote in map_votes]
-                voted_maps: list[VoteableMap] = (
-                    session.query(VoteableMap).filter(VoteableMap.id.in_(voted_map_ids)).all()  # type: ignore
+                voted_maps: list[Map] = (
+                    session.query(Map).filter(Map.id.in_(voted_map_ids)).all()  # type: ignore
                 )
                 voted_maps_str = ", ".join(
                     [
@@ -1037,6 +1034,8 @@ def map_status_str(full_status: bool) -> str:
                     ]
                 )
                 output += f"_Votes to change map (votemap): {voted_maps_str}_\n"
+        else:
+            output += "There is no current map"
         return output
 
 
@@ -1089,7 +1088,8 @@ async def add(ctx: Context, *args):
         queues_to_add: list[Queue] = []
         if len(args) == 0:
             # Don't auto-add to isolated queues
-            queues_to_add += session.query(Queue).filter(Queue.is_isolated == False).order_by(Queue.created_at.asc()).all()  # type: ignore
+            queues_to_add += session.query(Queue).filter(Queue.is_isolated == False).order_by(
+                Queue.created_at.asc()).all()  # type: ignore
         else:
             all_queues = session.query(Queue).order_by(Queue.created_at.asc()).all()  # type: ignore
             for arg in args:
@@ -1124,14 +1124,14 @@ async def add(ctx: Context, *args):
                 )
                 try:
                     session.commit()
-                except IntegrityError as exc:
+                except IntegrityError:
                     session.rollback()
 
             current_time: datetime = datetime.now(timezone.utc)
             # The assumption is the end timestamp is later than now, otherwise it
             # would have been processed
             difference: float = (
-                vpw.end_waitlist_at.replace(tzinfo=timezone.utc) - current_time
+                    vpw.end_waitlist_at.replace(tzinfo=timezone.utc) - current_time
             ).total_seconds()
             if difference < config.RE_ADD_DELAY_SECONDS:
                 waitlist_message = f"A vote just passed, you will be randomized into the queue in {floor(difference)} seconds"
@@ -1326,54 +1326,6 @@ async def addqueuerole(ctx: Context, queue_name: str, role_name: str):
 
 @bot.command()
 @commands.check(is_admin)
-async def addrotationmap(ctx: Context, map_short_name: str, map_full_name: str):
-    message = ctx.message
-    session = Session()
-    session.add(RotationMap(map_full_name, map_short_name))
-    try:
-        session.commit()
-    except IntegrityError:
-        session.rollback()
-        await send_message(
-            message.channel,
-            embed_description=f"Error adding map {map_full_name} ({map_short_name}) to rotation. Does it already exist?",
-            colour=Colour.red(),
-        )
-        return
-
-    await send_message(
-        message.channel,
-        embed_description=f"{map_full_name} ({map_short_name}) added to map rotation",
-        colour=Colour.green(),
-    )
-
-
-@bot.command()
-@commands.check(is_admin)
-async def addmap(ctx: Context, map_short_name: str, map_full_name: str):
-    message = ctx.message
-    session = Session()
-    session.add(VoteableMap(map_full_name, map_short_name))
-    try:
-        session.commit()
-    except IntegrityError:
-        session.rollback()
-        await send_message(
-            message.channel,
-            embed_description=f"Error adding map {map_full_name} ({map_short_name}). Does it already exist?",
-            colour=Colour.red(),
-        )
-        return
-
-    await send_message(
-        message.channel,
-        embed_description=f"{map_full_name} ({map_short_name}) added to map pool",
-        colour=Colour.green(),
-    )
-
-
-@bot.command()
-@commands.check(is_admin)
 async def ban(ctx: Context, member: Member):
     """TODO: remove player from queues"""
     message = ctx.message
@@ -1440,7 +1392,7 @@ async def cancelgame(ctx: Context, game_id: str):
         InProgressGamePlayer.in_progress_game_id == game.id
     ).delete()
     for channel in session.query(InProgressGameChannel).filter(
-        InProgressGameChannel.in_progress_game_id == game.id
+            InProgressGameChannel.in_progress_game_id == game.id
     ):
         if message.guild:
             guild_channel = message.guild.get_channel(channel.channel_id)
@@ -1449,114 +1401,13 @@ async def cancelgame(ctx: Context, game_id: str):
         session.delete(channel)
 
     session.query(InProgressGame).filter(
-            InProgressGame.id == game.id
-        ).delete()
+        InProgressGame.id == game.id
+    ).delete()
     session.commit()
     await send_message(
         message.channel,
         embed_description=f"Game {game_id} cancelled",
         colour=Colour.blue(),
-    )
-
-
-@bot.command()
-async def changegamemap(ctx: Context, game_id: str, map_short_name: str):
-    message = ctx.message
-    """
-    TODO: tests
-    """
-    session = Session()
-    ipg: InProgressGame | None = (
-        session.query(InProgressGame)
-        .filter(InProgressGame.id.startswith(game_id))
-        .first()
-    )
-    if not ipg:
-        await send_message(
-            message.channel,
-            embed_description=f"Could not find game: {game_id}",
-            colour=Colour.red(),
-        )
-        return
-
-    rotation_map: RotationMap | None = (
-        session.query(RotationMap).filter(RotationMap.short_name.ilike(map_short_name)).first()  # type: ignore
-    )
-    if rotation_map:
-        ipg.map_full_name = rotation_map.full_name
-        ipg.map_short_name = rotation_map.short_name
-        session.commit()
-    else:
-        voteable_map: VoteableMap | None = (
-            session.query(VoteableMap)
-            .filter(VoteableMap.short_name.ilike(map_short_name))  # type: ignore
-            .first()
-        )
-        if voteable_map:
-            ipg.map_full_name = voteable_map.full_name
-            ipg.map_short_name = voteable_map.short_name
-            session.commit()
-        else:
-            await send_message(
-                message.channel,
-                embed_description=f"Could not find map: {map_short_name}. Add to rotation or map pool first.",
-                colour=Colour.red(),
-            )
-            return
-
-    session.commit()
-    await send_message(
-        message.channel,
-        embed_description=f"Map for game {game_id} changed to {map_short_name}",
-        colour=Colour.green(),
-    )
-
-
-@bot.command()
-@commands.check(is_admin)
-async def changequeuemap(ctx: Context, map_short_name: str):
-    message = ctx.message
-    """
-    TODO: tests
-    """
-    session = Session()
-    current_map: CurrentMap = session.query(CurrentMap).first()
-    rotation_map: RotationMap | None = (
-        session.query(RotationMap).filter(RotationMap.short_name.ilike(map_short_name)).first()  # type: ignore
-    )
-    if rotation_map:
-        rotation_maps: list[RotationMap] = (
-            session.query(RotationMap).order_by(RotationMap.created_at.asc()).all()  # type: ignore
-        )
-        rotation_map_index = rotation_maps.index(rotation_map)
-        current_map.full_name = rotation_map.full_name
-        current_map.short_name = rotation_map.short_name
-        current_map.map_rotation_index = rotation_map_index
-        current_map.updated_at = datetime.now(timezone.utc)
-        session.commit()
-    else:
-        voteable_map: VoteableMap | None = (
-            session.query(VoteableMap)
-            .filter(VoteableMap.short_name.ilike(map_short_name))  # type: ignore
-            .first()
-        )
-        if voteable_map:
-            current_map.full_name = voteable_map.full_name
-            current_map.short_name = voteable_map.short_name
-            current_map.updated_at = datetime.now(timezone.utc)
-            session.commit()
-        else:
-            await send_message(
-                message.channel,
-                embed_description=f"Could not find map: {map_short_name}. Add to rotation or map pool first.",
-                colour=Colour.red(),
-            )
-            return
-    session.commit()
-    await send_message(
-        message.channel,
-        embed_description=f"Queue map changed to {map_short_name}",
-        colour=Colour.green(),
     )
 
 
@@ -1648,7 +1499,8 @@ async def del_(ctx: Context, *args):
     message = ctx.message
     with Session() as session:
         queues_to_del: list[Queue] = []
-        all_queues: list(Queue) = session.query(Queue).join(QueuePlayer).filter(QueuePlayer.player_id == message.author.id).order_by(Queue.created_at.asc()).all()  # type: ignore
+        all_queues: list(Queue) = session.query(Queue).join(QueuePlayer).filter(
+            QueuePlayer.player_id == message.author.id).order_by(Queue.created_at.asc()).all()  # type: ignore
         if len(args) == 0:
             queues_to_del = all_queues
         else:
@@ -1707,7 +1559,8 @@ async def delplayer(ctx: Context, member: Member, *args):
     """
     message = ctx.message
     session = Session()
-    queues: list(Queue) = session.query(Queue).join(QueuePlayer).filter(QueuePlayer.player_id == member.id).order_by(Queue.created_at.asc()).all()  # type: ignore
+    queues: list(Queue) = session.query(Queue).join(QueuePlayer).filter(QueuePlayer.player_id == member.id).order_by(
+        Queue.created_at.asc()).all()  # type: ignore
     for queue in queues:
         session.query(QueuePlayer).filter(
             QueuePlayer.queue_id == queue.id, QueuePlayer.player_id == member.id
@@ -1803,7 +1656,7 @@ async def editgamewinner(ctx: Context, game_id: str, outcome: str):
     await send_message(
         message.channel,
         embed_description=f"Game {game_id} outcome changed:\n\n"
-        + finished_game_str(game),
+                          + finished_game_str(game),
         colour=Colour.green(),
     )
 
@@ -1833,7 +1686,6 @@ async def finishgame(ctx: Context, outcome: str):
     queue: Queue = (
         session.query(Queue).filter(Queue.id == in_progress_game.queue_id).first()
     )
-    winning_team = -1
     if outcome.lower() == "win":
         winning_team = game_player.team
     elif outcome.lower() == "loss":
@@ -2088,13 +1940,12 @@ async def finishgame(ctx: Context, outcome: str):
     if message.guild:
         session.add(
             QueueWaitlist(
-                channel_id=message.channel.id,
                 finished_game_id=finished_game.id,
                 guild_id=message.guild.id,
                 in_progress_game_id=in_progress_game.id,
                 queue_id=queue.id,
                 end_waitlist_at=datetime.now(timezone.utc)
-                + timedelta(seconds=config.RE_ADD_DELAY_SECONDS),
+                                + timedelta(seconds=config.RE_ADD_DELAY_SECONDS),
             )
         )
     session.commit()
@@ -2151,7 +2002,7 @@ def leaderboard_cooldown(message: Message):
 
 
 @bot.command()
-@commands.cooldown(1,3600, leaderboard_cooldown)
+@commands.cooldown(1, 3600, leaderboard_cooldown)
 async def leaderboard(ctx: Context, *args):
     if not config.SHOW_TRUESKILL:
         await send_message(
@@ -2169,7 +2020,7 @@ async def leaderboard(ctx: Context, *args):
 
     with Session() as session:
         output = "**Leaderboard**"
-        queue_regions: list[QueueRegion] = session.query(QueueRegion).filter( args[0] == QueueRegion.name).all()
+        queue_regions: list[QueueRegion] = session.query(QueueRegion).filter(args[0] == QueueRegion.name).all()
         if len(queue_regions) > 0:
             for queue_region in queue_regions:
                 output += f"\n_{queue_region.name}_"
@@ -2245,16 +2096,6 @@ async def listbans(ctx: Context):
 
 
 @bot.command()
-async def listmaprotation(ctx: Context):
-    message = ctx.message
-    output = "Map rotation:"
-    rotation_map: RotationMap
-    for rotation_map in Session().query(RotationMap).order_by(RotationMap.created_at.asc()):  # type: ignore
-        output += f"\n- {rotation_map.full_name} ({rotation_map.short_name})"
-    await send_message(message.channel, embed_description=output, colour=Colour.blue())
-
-
-@bot.command()
 async def listnotifications(ctx: Context):
     message = ctx.message
     session = Session()
@@ -2296,22 +2137,12 @@ async def listqueueroles(ctx: Context):
         queue_role_names: list[str] = []
         queue_role: QueueRole
         for queue_role in (
-            session.query(QueueRole).filter(QueueRole.queue_id == queue.id).all()
+                session.query(QueueRole).filter(QueueRole.queue_id == queue.id).all()
         ):
             role = message.guild.get_role(queue_role.role_id)
             if role:
                 queue_role_names.append(role.name)
         output += f"**{queue.name}**: {', '.join(queue_role_names)}\n"
-    await send_message(message.channel, embed_description=output, colour=Colour.blue())
-
-
-@bot.command()
-async def listmaps(ctx: Context):
-    message = ctx.message
-    output = "Voteable map pool"
-    voteable_map: VoteableMap
-    for voteable_map in Session().query(VoteableMap).order_by(VoteableMap.full_name):
-        output += f"\n- {voteable_map.full_name} ({voteable_map.short_name})"
     await send_message(message.channel, embed_description=output, colour=Colour.blue())
 
 
@@ -2414,7 +2245,7 @@ async def mockrandomqueue(ctx: Context, *args):
     )
     queue = session.query(Queue).filter(Queue.name.ilike(args[0])).first()  # type: ignore
     for player in numpy.random.choice(
-        players_from_last_30_days, size=int(args[1]), replace=False
+            players_from_last_30_days, size=int(args[1]), replace=False
     ):
         if isinstance(message.channel, TextChannel) and message.guild:
             add_player_queue.put(
@@ -2529,19 +2360,6 @@ async def pug(ctx: Context):
     cropped.save(ntf.name)
     await ctx.message.channel.send(file=discord.File(ntf.name))
     ntf.close()
-
-
-@bot.command()
-@commands.check(is_admin)
-async def randommap(ctx: Context):
-    session = Session()
-    voteable_maps: list[VoteableMap] = session.query(VoteableMap).all()
-    voteable_map = choice(voteable_maps)
-    await send_message(
-        ctx.message.channel,
-        embed_description=f"Random map selected: **{voteable_map.full_name} ({voteable_map.short_name})**",
-        colour=Colour.blue(),
-    )
 
 
 @bot.command()
@@ -2768,34 +2586,6 @@ async def removerotationmap(ctx: Context, map_short_name: str):
 
 
 @bot.command()
-@commands.check(is_admin)
-async def removemap(ctx: Context, map_short_name: str):
-    message = ctx.message
-    session = Session()
-    voteable_map = (
-        session.query(VoteableMap).filter(VoteableMap.short_name.ilike(map_short_name)).first()  # type: ignore
-    )
-    if voteable_map:
-        session.query(MapVote).filter(
-            MapVote.voteable_map_id == voteable_map.id
-        ).delete()
-        session.delete(voteable_map)
-        await send_message(
-            message.channel,
-            embed_description=f"{map_short_name} removed from map pool",
-            colour=Colour.green(),
-        )
-    else:
-        await send_message(
-            message.channel,
-            embed_description=f"Could not find vote for map: {map_short_name}",
-            colour=Colour.red(),
-        )
-
-    session.commit()
-
-
-@bot.command()
 async def roll(ctx: Context, low_range: int, high_range: int):
     message = ctx.message
     await send_message(
@@ -3001,12 +2791,12 @@ async def showgamedebug(ctx: Context, game_id: str):
         game_str += "\n**Most even team combinations:**"
         for _, best_team in best_teams:
             team0_players = best_team[: len(best_team) // 2]
-            team1_players = best_team[len(best_team) // 2 :]
+            team1_players = best_team[len(best_team) // 2:]
             game_str += f"\n{mock_finished_game_teams_str(team0_players, team1_players, finished_game.is_rated)}"
         game_str += "\n\n**Least even team combination:**"
         for _, worst_team in worst_teams:
             team0_players = worst_team[: len(worst_team) // 2]
-            team1_players = worst_team[len(worst_team) // 2 :]
+            team1_players = worst_team[len(worst_team) // 2:]
             game_str += f"\n{mock_finished_game_teams_str(team0_players, team1_players, finished_game.is_rated)}"
         await send_message(
             message.channel,
@@ -3051,14 +2841,14 @@ async def showgamedebug(ctx: Context, game_id: str):
             game_str += "\n**Most even team combinations:**"
             for _, best_team in best_teams:
                 team0_players = best_team[: len(best_team) // 2]
-                team1_players = best_team[len(best_team) // 2 :]
+                team1_players = best_team[len(best_team) // 2:]
                 game_str += (
                     f"\n{mock_teams_str(team0_players, team1_players, queue.is_rated)}"
                 )
             game_str += "\n\n**Least even team combination:**"
             for _, worst_team in worst_teams:
                 team0_players = worst_team[: len(worst_team) // 2]
-                team1_players = worst_team[len(worst_team) // 2 :]
+                team1_players = worst_team[len(worst_team) // 2:]
                 game_str += (
                     f"\n{mock_teams_str(team0_players, team1_players, queue.is_rated)}"
                 )
@@ -3162,9 +2952,9 @@ async def status(ctx: Context, *args):
                         game.team1_name, 1 - game.win_probability, team1_players
                     )
                     minutes_ago = (
-                        datetime.now(timezone.utc)
-                        - game.created_at.replace(tzinfo=timezone.utc)
-                    ).seconds // 60
+                                          datetime.now(timezone.utc)
+                                          - game.created_at.replace(tzinfo=timezone.utc)
+                                  ).seconds // 60
                     output += f"@ {minutes_ago} minutes ago\n"
 
         if len(output) == 0:
@@ -3208,7 +2998,7 @@ async def stats(ctx: Context):
         players = list(
             filter(
                 lambda x: x.rated_trueskill_mu != default_rating.mu
-                and x.rated_trueskill_mu != default_mu,
+                          and x.rated_trueskill_mu != default_mu,
                 players,
             )
         )
@@ -3243,17 +3033,17 @@ async def stats(ctx: Context):
 
         def is_win(finished_game: FinishedGame) -> bool:
             if (
-                fgps_by_finished_game_id[finished_game.id].team
-                == finished_game.winning_team
+                    fgps_by_finished_game_id[finished_game.id].team
+                    == finished_game.winning_team
             ):
                 return True
             return False
 
         def is_loss(finished_game: FinishedGame) -> bool:
             if (
-                fgps_by_finished_game_id[finished_game.id].team
-                != finished_game.winning_team
-                and finished_game.winning_team != -1
+                    fgps_by_finished_game_id[finished_game.id].team
+                    != finished_game.winning_team
+                    and finished_game.winning_team != -1
             ):
                 return True
             return False
@@ -3268,16 +3058,20 @@ async def stats(ctx: Context):
         total_games = len(fgs)
 
         def last_month(finished_game: FinishedGame) -> bool:
-            return finished_game.finished_at.timestamp() > datetime.now().timestamp() - timedelta(days=30).total_seconds()
+            return finished_game.finished_at.timestamp() > datetime.now().timestamp() - timedelta(
+                days=30).total_seconds()
 
         def last_three_months(finished_game: FinishedGame) -> bool:
-            return finished_game.finished_at.timestamp() > datetime.now().timestamp() - timedelta(days=90).total_seconds()
+            return finished_game.finished_at.timestamp() > datetime.now().timestamp() - timedelta(
+                days=90).total_seconds()
 
         def last_six_months(finished_game: FinishedGame) -> bool:
-            return finished_game.finished_at.timestamp() > datetime.now().timestamp() - timedelta(days=180).total_seconds()
+            return finished_game.finished_at.timestamp() > datetime.now().timestamp() - timedelta(
+                days=180).total_seconds()
 
         def last_year(finished_game: FinishedGame) -> bool:
-            return finished_game.finished_at.timestamp() > datetime.now().timestamp() - timedelta(days=365).total_seconds()
+            return finished_game.finished_at.timestamp() > datetime.now().timestamp() - timedelta(
+                days=365).total_seconds()
 
         games_last_month = list(filter(last_month, fgs))
         games_last_three_months = list(filter(last_three_months, fgs))
@@ -3485,7 +3279,7 @@ async def sub(ctx: Context, member: Member):
         session.delete(game_player)
     game.win_probability = win_prob
     team0_players = players[: len(players) // 2]
-    team1_players = players[len(players) // 2 :]
+    team1_players = players[len(players) // 2:]
 
     short_game_id = short_uuid(game.id)
     channel_message = f"New teams ({short_game_id}):"
@@ -3645,203 +3439,185 @@ async def unsetqueueregion(ctx: Context, queue_name: str):
 
 @bot.command()
 async def unvote(ctx: Context):
-    message = ctx.message
     """
     Remove all of a player's votes
     """
-    session = Session()
-    session.query(MapVote).filter(MapVote.player_id == message.author.id).delete()
-    session.query(SkipMapVote).filter(
-        SkipMapVote.player_id == message.author.id
-    ).delete()
-    session.commit()
-    await send_message(
-        message.channel,
-        embed_description="All map votes deleted",
-        colour=Colour.green(),
-    )
-
-
-# TODO: Unvote for many maps at once
-@bot.command()
-async def unvotemap(ctx: Context, map_short_name: str):
     message = ctx.message
-    session = Session()
-    voteable_map: VoteableMap | None = session.query(VoteableMap).filter(VoteableMap.short_name.ilike(args[0])).first()  # type: ignore
-    if not voteable_map:
-        await send_message(
-            message.channel,
-            embed_description=f"Could not find voteable map: {map_short_name}",
-            colour=Colour.red(),
-        )
-        return
-    map_vote: MapVote | None = (
-        session.query(MapVote)
-        .filter(
-            MapVote.player_id == message.author.id,
-            MapVote.voteable_map_id == voteable_map.id,
-        )
-        .first()
-    )
-    if not map_vote:
-        await send_message(
-            message.channel,
-            embed_description=f"You don't have a vote for: {map_short_name}",
-            colour=Colour.red(),
-        )
-        return
-    else:
-        session.delete(map_vote)
-    session.commit()
-    await send_message(
-        message.channel,
-        embed_description=f"Your vote for {map_short_name} was removed",
-        colour=Colour.green(),
-    )
-
-
-@bot.command()
-async def unvoteskip(ctx: Context):
-    message = ctx.message
-    """
-    A player votes to go to the next map in rotation
-    """
-    session = Session()
-    skip_map_vote: SkipMapVote | None = (
-        session.query(SkipMapVote)
-        .filter(SkipMapVote.player_id == message.author.id)
-        .first()
-    )
-    if skip_map_vote:
-        session.delete(skip_map_vote)
+    with Session() as session:
+        session.query(MapVote).filter(MapVote.player_id == message.author.id).delete()
+        session.query(SkipMapVote).filter(
+            SkipMapVote.player_id == message.author.id
+        ).delete()
         session.commit()
         await send_message(
             message.channel,
-            embed_description="Your vote to skip the current map was removed.",
-            colour=Colour.green(),
-        )
-    else:
-        await send_message(
-            message.channel,
-            embed_description="You don't have a vote to skip the current map.",
+            embed_description="All map votes deleted",
             colour=Colour.green(),
         )
 
 
 def get_voteable_maps_str():
-    voteable_maps: list[VoteableMap] = Session().query(VoteableMap).all()
-    return ", ".join([voteable_map.short_name for voteable_map in voteable_maps])
+    with Session() as session:
+        voteable_maps: list[Map] = session.query(Map).filter(Map.is_votable).all()
+        return ", ".join([voteable_map.short_name for voteable_map in voteable_maps])
+
+
+# TODO: Unvote for many maps at once
+@bot.command(usage=f"<map_short_name>\nMaps:{get_voteable_maps_str()}")
+async def unvotemap(ctx: Context, map_short_name: str):
+    with Session() as session:
+        message = ctx.message
+        voteable_map: Map | None = session.query(Map).filter(Map.is_votable, Map.short_name.ilike(
+            map_short_name)).first()  # type: ignore
+        if not voteable_map:
+            await send_message(
+                message.channel,
+                embed_description=f"Could not find voteable map: {map_short_name}",
+                colour=Colour.red(),
+            )
+            return
+        map_vote: MapVote | None = (
+            session.query(MapVote)
+            .filter(
+                MapVote.player_id == message.author.id,
+                MapVote.voteable_map_id == voteable_map.id,
+            )
+            .first()
+        )
+        if not map_vote:
+            await send_message(
+                message.channel,
+                embed_description=f"You don't have a vote for: {map_short_name}",
+                colour=Colour.red(),
+            )
+            return
+        else:
+            session.delete(map_vote)
+        session.commit()
+        await send_message(
+            message.channel,
+            embed_description=f"Your vote for {map_short_name} was removed",
+            colour=Colour.green(),
+        )
+
+
+@bot.command()
+async def unvoteskip(ctx: Context):
+    """
+    A player votes to go to the next map in rotation
+    """
+    with Session() as session:
+        message = ctx.message
+        skip_map_vote: SkipMapVote | None = (
+            session.query(SkipMapVote)
+            .filter(SkipMapVote.player_id == message.author.id)
+            .first()
+        )
+        if skip_map_vote:
+            session.delete(skip_map_vote)
+            session.commit()
+            await send_message(
+                message.channel,
+                embed_description="Your vote to skip the current map was removed.",
+                colour=Colour.green(),
+            )
+        else:
+            await send_message(
+                message.channel,
+                embed_description="You don't have a vote to skip the current map.",
+                colour=Colour.green(),
+            )
 
 
 # TODO: Vote for many maps at once
 @bot.command(usage=f"<map_short_name>\nMaps:{get_voteable_maps_str()}")
 async def votemap(ctx: Context, map_short_name: str):
-    message = ctx.message
-    session = Session()
-    voteable_map: VoteableMap | None = session.query(VoteableMap).filter(VoteableMap.short_name.ilike(map_short_name)).first()  # type: ignore
-    if not voteable_map:
-        await send_message(
-            message.channel,
-            embed_description=f"Could not find voteable map: {map_short_name}\nMaps: {get_voteable_maps_str()}",
-            colour=Colour.red(),
+    with Session() as session:
+        message = ctx.message
+        voteable_map: Map | None = session.query(Map).filter(Map.is_votable, Map.short_name.ilike(
+            map_short_name)).first()  # type: ignore
+        if not voteable_map:
+            await send_message(
+                message.channel,
+                embed_description=f"Could not find voteable map: {map_short_name}\nMaps: {get_voteable_maps_str()}",
+                colour=Colour.red(),
+            )
+            return
+
+        try:
+            session.add(MapVote(message.author.id, voteable_map_id=voteable_map.id))
+            session.commit()
+        except IntegrityError:
+            # Vote for this map and player already exists
+            session.rollback()
+
+        map_votes: list[MapVote] = (
+            session
+            .query(MapVote)
+            .filter(MapVote.voteable_map_id == voteable_map.id)
+            .all()
         )
-        return
+        if len(map_votes) >= config.MAP_VOTE_THRESHOLD:
+            current_map: CurrentMap | None = session.query(CurrentMap).first()
+            if current_map:
+                current_map.map_id = voteable_map.id
+                current_map.updated_at = datetime.now(timezone.utc)
+            else:
+                session.add(CurrentMap(voteable_map.id))
+                try:
+                    session.commit()
+                except IntegrityError:
+                    session.rollback()
 
-    session.add(
-        MapVote(message.channel.id, message.author.id, voteable_map_id=voteable_map.id)
-    )
-    try:
-        session.commit()
-    except IntegrityError:
-        session.rollback()
-
-    map_votes: list[MapVote] = (
-        Session()
-        .query(MapVote)
-        .filter(MapVote.voteable_map_id == voteable_map.id)
-        .all()
-    )
-    if len(map_votes) == config.MAP_VOTE_THRESHOLD:
-        current_map: CurrentMap | None = session.query(CurrentMap).first()
-        if current_map:
-            current_map.full_name = voteable_map.full_name
-            current_map.short_name = voteable_map.short_name
-            current_map.updated_at = datetime.now(timezone.utc)
+            await send_message(
+                message.channel,
+                embed_description=f"Vote for {voteable_map.full_name} ({voteable_map.short_name}) passed!\n**New map: {voteable_map.full_name} ({voteable_map.short_name})**",
+                colour=Colour.green(),
+            )
+            session.query(MapVote).delete()
+            session.query(SkipMapVote).delete()
+            if message.guild:
+                # TODO: Check if another vote already exists
+                session.add(
+                    VotePassedWaitlist(
+                        channel_id=message.channel.id,
+                        guild_id=message.guild.id,
+                        end_waitlist_at=datetime.now(timezone.utc)
+                                        + timedelta(seconds=config.RE_ADD_DELAY_SECONDS),
+                    )
+                )
+            session.commit()
         else:
-            session.add(
-                CurrentMap(
-                    full_name=voteable_map.full_name,
-                    map_rotation_index=0,
-                    short_name=voteable_map.short_name,
-                )
+            map_votes: list[MapVote] = session.query(MapVote).all()
+            voted_map_ids: list[str] = [map_vote.voteable_map_id for map_vote in map_votes]
+            voted_maps: list[Map] = (
+                session.query(Map).filter(Map.is_votable, Map.id.in_(voted_map_ids)).all()  # type: ignore
             )
-            try:
-                session.commit()
-            except IntegrityError:
-                session.rollback()
-
-        await send_message(
-            message.channel,
-            embed_description=f"Vote for {voteable_map.full_name} ({voteable_map.short_name}) passed!\n**New map: {voteable_map.full_name} ({voteable_map.short_name})**",
-            colour=Colour.green(),
-        )
-        session.query(MapVote).delete()
-        session.query(SkipMapVote).delete()
-        if message.guild:
-            # TODO: Check if another vote already exists
-            session.add(
-                VotePassedWaitlist(
-                    channel_id=message.channel.id,
-                    guild_id=message.guild.id,
-                    end_waitlist_at=datetime.now(timezone.utc)
-                    + timedelta(seconds=config.RE_ADD_DELAY_SECONDS),
-                )
+            voted_maps_str = ", ".join(
+                [
+                    f"{voted_map.short_name} [{voted_map_ids.count(voted_map.id)}/{config.MAP_VOTE_THRESHOLD}]"
+                    for voted_map in voted_maps
+                ]
             )
+            await send_message(
+                message.channel,
+                embed_description=f"Added map vote for {map_short_name}.\n!unvotemap to remove your vote.\nVotes: {voted_maps_str}",
+                colour=Colour.green(),
+            )
+
         session.commit()
-    else:
-        map_votes: list[MapVote] = session.query(MapVote).all()
-        voted_map_ids: list[str] = [map_vote.voteable_map_id for map_vote in map_votes]
-        voted_maps: list[VoteableMap] = (
-            session.query(VoteableMap).filter(VoteableMap.id.in_(voted_map_ids)).all()  # type: ignore
-        )
-        voted_maps_str = ", ".join(
-            [
-                f"{voted_map.short_name} [{voted_map_ids.count(voted_map.id)}/{config.MAP_VOTE_THRESHOLD}]"
-                for voted_map in voted_maps
-            ]
-        )
-        await send_message(
-            message.channel,
-            embed_description=f"Added map vote for {map_short_name}.\n!unvotemap to remove your vote.\nVotes: {voted_maps_str}",
-            colour=Colour.green(),
-        )
-
-    session.commit()
 
 
-@bot.command()
-async def voteskip(ctx: Context):
-    message = ctx.message
-    """
-    A player votes to go to the next map in rotation
-    """
-    session = Session()
-    session.add(SkipMapVote(message.channel.id, message.author.id))
-    try:
-        session.commit()
-    except IntegrityError:
-        session.rollback()
+async def voteskip_passed(message: Message):
+    await update_current_map_to_next_map_in_rotation()
+    current_map, current_map_full = get_current_map()
+    await send_message(
+        message.channel,
+        embed_description=f"Vote to skip the current map passed!\n**New map: {current_map_full.full_name} ({current_map_full.short_name})**",
+        colour=Colour.green(),
+    )
 
-    skip_map_votes: list[SkipMapVote] = Session().query(SkipMapVote).all()
-    if len(skip_map_votes) >= config.MAP_VOTE_THRESHOLD:
-        await update_current_map_to_next_map_in_rotation()
-        current_map: CurrentMap = Session().query(CurrentMap).first()
-        await send_message(
-            message.channel,
-            embed_description=f"Vote to skip the current map passed!\n**New map: {current_map.full_name} ({current_map.short_name})**",
-            colour=Colour.green(),
-        )
-
+    with Session() as session:
         session.query(MapVote).delete()
         session.query(SkipMapVote).delete()
         if message.guild:
@@ -3853,17 +3629,35 @@ async def voteskip(ctx: Context):
                         channel_id=message.channel.id,
                         guild_id=message.guild.id,
                         end_waitlist_at=datetime.now(timezone.utc)
-                        + timedelta(seconds=config.RE_ADD_DELAY_SECONDS),
+                                        + timedelta(seconds=config.RE_ADD_DELAY_SECONDS),
                     )
                 )
         session.commit()
-    else:
+
+
+@bot.command()
+async def voteskip(ctx: Context):
+    """
+    A player votes to go to the next map in rotation
+    """
+    with Session() as session:
+        message = ctx.message
+        try:
+            session.add(SkipMapVote(message.author.id))
+            session.commit()
+        except IntegrityError:
+            # another vote already exists for this player
+            session.rollback()
+
         skip_map_votes: list[SkipMapVote] = session.query(SkipMapVote).all()
-        await send_message(
-            message.channel,
-            embed_description=f"Added vote to skip the current map.\n!unvoteskip to remove vote.\nVotes to skip: [{len(skip_map_votes)}/{config.MAP_VOTE_THRESHOLD}]",
-            colour=Colour.green(),
-        )
+        if len(skip_map_votes) >= config.MAP_VOTE_THRESHOLD:
+            await voteskip_passed(message)
+        else:
+            await send_message(
+                message.channel,
+                embed_description=f"Added vote to skip the current map.\n!unvoteskip to remove vote.\nVotes to skip: [{len(skip_map_votes)}/{config.MAP_VOTE_THRESHOLD}]",
+                colour=Colour.green(),
+            )
 
 
 @bot.command()
@@ -3877,36 +3671,273 @@ async def forceskip(ctx: Context):
             colour=Colour.red(),
         )
         return
-    """
-    A player votes to go to the next map in rotation
-    """
-    session = Session()
-    session.add(SkipMapVote(message.channel.id, message.author.id))
-    try:
-        session.commit()
-    except IntegrityError:
-        session.rollback()
+    await voteskip_passed(message)
 
-    await update_current_map_to_next_map_in_rotation()
-    current_map: CurrentMap = Session().query(CurrentMap).first()
+
+@bot.command()
+async def listmaps(ctx: Context):
+    with Session() as session:
+        message = ctx.message
+        output = "**Map pool**"
+        maps: list[Map] = session.query(Map).order_by(Map.rotation_index.asc()).all()
+        if not len(maps):
+            output += "\n\n_No maps have been added_"
+        else:
+            for i, the_map in enumerate(maps):
+                output += f"\n{i + 1}. {the_map.full_name} ({the_map.short_name}) - "
+                output += f"rotation weight: _{the_map.rotation_weight if the_map.rotation_weight else 'inactive'}_ - "
+                output += f"votable: _{'yes' if the_map.is_votable else 'no'}_"
+        await send_message(
+            message.channel,
+            embed_description=output,
+            colour=Colour.blue(),
+        )
+
+
+@bot.command(usage="<map_full_name> <map_short_name>")
+@commands.check(is_admin)
+async def addmap(ctx: Context, full_name: str, short_name: str):
+    with Session() as session:
+        message = ctx.message
+        highest_rotation_map: Map = session.query(Map).order_by(Map.rotation_index.desc()).first()
+        hightes_rotation_index = highest_rotation_map.rotation_index if highest_rotation_map else -1
+        session.add(Map(full_name=full_name, short_name=short_name, rotation_index=hightes_rotation_index + 1,
+                        rotation_weight=0, is_votable=True))
+        try:
+            session.commit()
+        except IntegrityError:
+            session.rollback()
+            await send_message(
+                message.channel,
+                embed_description=f"Error adding map {full_name} ({short_name}). Does it already exist?",
+                colour=Colour.red(),
+            )
+            return
+
+        await send_message(
+            message.channel,
+            embed_description=f"Map {full_name} (short name: {short_name}) added to map pool, rotation: inactive, votable: yes",
+            colour=Colour.green(),
+        )
+
+
+@bot.command(usage="<map_short_name> <weight>\nweight=0 means: not in rotation")
+@commands.check(is_admin)
+async def setmapweight(ctx: Context, short_name: str, rotation_weight: int):
+    message = ctx.message
+    if rotation_weight < 0:
+        await send_message(
+            message.channel,
+            embed_description="Rotation weight must be zero or greater",
+            colour=Colour.red(),
+        )
+        return
+
+    with Session() as session:
+        the_map: Map | None = session.query(Map).filter(Map.short_name == short_name).first()
+        if not the_map:
+            await send_message(
+                message.channel,
+                embed_description=f"Map {short_name} not found",
+                colour=Colour.red(),
+            )
+            return
+
+        the_map.rotation_weight = rotation_weight
+        await send_message(
+            message.channel,
+            embed_description=f"Map {short_name} updated to rotation weight {rotation_weight}",
+            colour=Colour.green(),
+        )
+        session.commit()
+
+
+@bot.command(usage="<map_short_name> <votable>\n<votable> can be yes, true, no, false")
+@commands.check(is_admin)
+async def setmapvotable(ctx: Context, short_name: str, votable: str):
+    message = ctx.message
+    match votable.lower():
+        case "yes" | "true":
+            votable = True
+        case "no" | "false":
+            votable = False
+        case _:
+            votable = None
+    if votable is None:
+        await send_message(
+            message.channel,
+            embed_description="<votable> must be one of yes, true, no, false",
+            colour=Colour.red(),
+        )
+        return
+
+    with Session() as session:
+        the_map: Map | None = session.query(Map).filter(Map.short_name == short_name).first()
+        if not the_map:
+            await send_message(
+                message.channel,
+                embed_description=f"Map {short_name} not found",
+                colour=Colour.red(),
+            )
+            return
+
+        the_map.is_votable = votable
+        await send_message(
+            message.channel,
+            embed_description=f"Map {short_name} updated to votable {'yes' if votable else 'no'}",
+            colour=Colour.green(),
+        )
+        session.commit()
+
+
+def reorder_maps(maps: list[Map], old_idx: int | None = None, new_idx: int | None = None):
+    if old_idx or new_idx:
+        elem = maps.pop(old_idx)
+        maps.insert(new_idx, elem)
+    for idx, the_map in enumerate(maps):
+        the_map.rotation_index = idx
+
+
+@bot.command()
+@commands.check(is_admin)
+async def removemap(ctx: Context, short_name: str):
+    with Session() as session:
+        message = ctx.message
+        the_map: Map | None = session.query(Map).filter(Map.short_name == short_name).first()
+        if not the_map:
+            await send_message(
+                message.channel,
+                embed_description=f"Map {short_name} not found",
+                colour=Colour.red(),
+            )
+            return
+
+        current_map, current_map_full = get_current_map()
+        deleting_current_map = current_map and the_map.id == current_map.map_id
+
+        session.query(MapVote).filter(MapVote.voteable_map_id == the_map.id).delete()
+        if deleting_current_map:
+            session.delete(current_map)
+        session.delete(the_map)
+
+        maps: list[Map] = session.query(Map).order_by(Map.rotation_index.asc()).all()
+        reorder_maps(maps)
+        session.commit()
+
     await send_message(
         message.channel,
-        embed_description=f"Vote to skip the current map passed!\n**New map: {current_map.full_name} ({current_map.short_name})**",
+        embed_description=f"Map {short_name} removed from map pool",
         colour=Colour.green(),
     )
+    if deleting_current_map:
+        await voteskip_passed(message)
 
-    session.query(MapVote).delete()
-    session.query(SkipMapVote).delete()
-    if message.guild:
-        # TODO: Might be bugs if two votes pass one after the other
-        vpw: VotePassedWaitlist | None = session.query(VotePassedWaitlist).first()
-        if not vpw:
-            session.add(
-                VotePassedWaitlist(
-                    channel_id=message.channel.id,
-                    guild_id=message.guild.id,
-                    end_waitlist_at=datetime.now(timezone.utc)
-                    + timedelta(seconds=config.RE_ADD_DELAY_SECONDS),
-                )
+
+@bot.command(usage="<short_name> <new_position>\nMoves the map to the supplied position. 1 for first position.")
+@commands.check(is_admin)
+async def reordermap(ctx: Context, short_name: str, new_position: int):
+    message = ctx.message
+    if new_position < 1:
+        await send_message(
+            message.channel,
+            embed_description=f"New map position must be a positive number",
+            colour=Colour.red(),
+        )
+        return
+
+    with Session() as session:
+        the_map: Map | None = session.query(Map).filter(Map.short_name == short_name).first()
+        if not the_map:
+            await send_message(
+                message.channel,
+                embed_description=f"Map {short_name} not found",
+                colour=Colour.red(),
             )
-    session.commit()
+            return
+        if new_position == the_map.rotation_index + 1:
+            await send_message(
+                message.channel,
+                embed_description=f"Map {short_name} is already at position {new_position}",
+                colour=Colour.blue(),
+            )
+            return
+
+        maps: list[Map] = session.query(Map).order_by(Map.rotation_index.asc()).all()
+        if new_position > len(maps):
+            await send_message(
+                message.channel,
+                embed_description=f"Invalid position: {new_position} is greater than the number of maps ({len(maps)})",
+                colour=Colour.red(),
+            )
+            return
+
+        reorder_maps(maps, the_map.rotation_index, new_position - 1)
+        await send_message(
+            message.channel,
+            embed_description=f"Map {short_name} reordered to position {new_position}.",
+            colour=Colour.green(),
+        )
+        session.commit()
+
+
+@bot.command()
+@commands.check(is_admin)
+async def changequeuemap(ctx: Context, short_name: str):
+    message = ctx.message
+    with Session() as session:
+        the_map: Map | None = session.query(Map).filter(Map.short_name == short_name).first()
+        if not the_map:
+            await send_message(
+                message.channel,
+                embed_description=f"Map {short_name} not found",
+                colour=Colour.red(),
+            )
+            return
+        current_map, current_map_full = get_current_map()
+        current_map.map_id = the_map.id
+        current_map.updated_at = datetime.now(timezone.utc)
+        session.query(MapVote).delete()
+        session.query(SkipMapVote).delete()
+        await send_message(
+            message.channel,
+            embed_description=f"Map changed to {short_name}. All votes removed.",
+            colour=Colour.green(),
+        )
+        session.commit()
+
+
+@bot.command()
+@commands.check(is_admin)
+async def changegamemap(ctx: Context, game_id: str, short_name: str):
+    message = ctx.message
+    with Session() as session:
+        ipg: InProgressGame | None = (
+            session.query(InProgressGame)
+            .filter(InProgressGame.id.startswith(game_id))
+            .first()
+        )
+        if not ipg:
+            await send_message(
+                message.channel,
+                embed_description=f"Could not find game: {game_id}",
+                colour=Colour.red(),
+            )
+            return
+
+        the_map: Map | None = session.query(Map).filter(Map.short_name == short_name).first()
+        if not the_map:
+            await send_message(
+                message.channel,
+                embed_description=f"Map {short_name} not found",
+                colour=Colour.red(),
+            )
+            return
+
+        ipg.map_full_name = the_map.full_name
+        ipg.map_short_name = the_map.short_name
+        await send_message(
+            message.channel,
+            embed_description=f"Map for game {game_id} changed to {short_name}",
+            colour=Colour.green(),
+        )
+        session.commit()

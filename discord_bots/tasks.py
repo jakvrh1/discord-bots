@@ -13,6 +13,7 @@ from discord.guild import Guild
 from discord.member import Member
 from discord.utils import escape_markdown
 
+import discord_bots.config as config
 from .bot import bot
 from .commands import (
     add_player_to_queue,
@@ -20,7 +21,6 @@ from .commands import (
 )
 from .log import define_logger
 from .models import (
-    CurrentMap,
     InProgressGame,
     InProgressGameChannel,
     MapVote,
@@ -35,8 +35,7 @@ from .models import (
     VotePassedWaitlistPlayer,
 )
 from .queues import AddPlayerQueueMessage, add_player_queue
-from .utils import send_message, update_current_map_to_next_map_in_rotation
-import discord_bots.config as config
+from .utils import send_message, update_current_map_to_next_map_in_rotation, get_current_map
 
 log = define_logger(__name__)
 
@@ -49,9 +48,9 @@ async def afk_timer_task():
 
             player: Player
             for player in (
-                session.query(Player)
-                .join(QueuePlayer)
-                .filter(Player.last_activity_at < timeout, QueuePlayer.player_id == Player.id)
+                    session.query(Player)
+                            .join(QueuePlayer)
+                            .filter(Player.last_activity_at < timeout, QueuePlayer.player_id == Player.id)
             ):
                 queue_player = (
                     session.query(QueuePlayer)
@@ -77,9 +76,9 @@ async def afk_timer_task():
 
             votes_removed_sent = False
             for player in (
-                session.query(Player)
-                .join(MapVote)
-                .filter(Player.last_activity_at < timeout, MapVote.player_id == Player.id)
+                    session.query(Player)
+                            .join(MapVote)
+                            .filter(Player.last_activity_at < timeout, MapVote.player_id == Player.id)
             ):
                 map_votes: list[MapVote] = (
                     session.query(MapVote).filter(MapVote.player_id == player.id).all()
@@ -101,9 +100,9 @@ async def afk_timer_task():
                     session.commit()
 
             for player in (
-                session.query(Player)
-                .join(SkipMapVote)
-                .filter(Player.last_activity_at < timeout, SkipMapVote.player_id == Player.id)
+                    session.query(Player)
+                            .join(SkipMapVote)
+                            .filter(Player.last_activity_at < timeout, SkipMapVote.player_id == Player.id)
             ):
                 skip_map_votes: list[SkipMapVote] = (
                     session.query(SkipMapVote).filter(SkipMapVote.player_id == player.id).all()
@@ -147,7 +146,7 @@ async def queue_waitlist_task():
             channel = None
             guild: Guild | None = None
             for queue_waitlist in session.query(QueueWaitlist).filter(
-                QueueWaitlist.end_waitlist_at < datetime.now(timezone.utc)
+                    QueueWaitlist.end_waitlist_at < datetime.now(timezone.utc)
             ):
                 if not channel:
                     channel = bot.get_channel(queue_waitlist.channel_id)
@@ -194,8 +193,8 @@ async def queue_waitlist_task():
                                 )
                             )
                 for igp_channel in session.query(InProgressGameChannel).filter(
-                    InProgressGameChannel.in_progress_game_id
-                    == queue_waitlist.in_progress_game_id
+                        InProgressGameChannel.in_progress_game_id
+                        == queue_waitlist.in_progress_game_id
                 ):
                     if guild:
                         guild_channel = guild.get_channel(igp_channel.channel_id)
@@ -289,19 +288,18 @@ async def vote_passed_waitlist_task():
 
 @tasks.loop(minutes=1)
 async def map_rotation_task():
-    """Rotate the map automatically, stopping on the 0th map
-    TODO: tests
+    """
+    Rotate the map automatically, stopping on the 0th map
     """
     try:
-        with Session() as session:
-            current_map: CurrentMap | None = session.query(CurrentMap).first()
-            if not current_map:
-                return
+        current_map, current_map_full = get_current_map()
+        if current_map and not config.RANDOM_MAP_ROTATION and current_map_full.rotation_index == 0:
+            # Stop at the first map
+            return
 
-            if not config.RANDOM_MAP_ROTATION and current_map.map_rotation_index == 0:
-                # Stop at the first map
-                return
-
+        if not current_map:
+            await update_current_map_to_next_map_in_rotation()
+        else:
             time_since_update: timedelta = datetime.now(
                 timezone.utc
             ) - current_map.updated_at.replace(tzinfo=timezone.utc)

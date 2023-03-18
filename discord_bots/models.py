@@ -3,7 +3,6 @@ from __future__ import annotations
 from dataclasses import dataclass, field
 from datetime import datetime, timezone
 from uuid import uuid4
-import discord_bots.config as config
 
 import trueskill
 from sqlalchemy import (
@@ -16,13 +15,14 @@ from sqlalchemy import (
     UniqueConstraint,
     create_engine,
 )
-
 from sqlalchemy.ext.hybrid import hybrid_property
 # pylance issue with sqlalchemy:
 # https://github.com/microsoft/pylance-release/issues/845
 from sqlalchemy.orm import registry, sessionmaker  # type: ignore
 from sqlalchemy.sql import expression, func
 from sqlalchemy.sql.schema import ForeignKey, MetaData
+
+import discord_bots.config as config
 
 # It may be tempting, but do not set check_same_thread=False here. Sqlite
 # doesn't handle concurrency well and writing to the db on different threads
@@ -39,7 +39,6 @@ from sqlalchemy.sql.schema import ForeignKey, MetaData
 db_url = 'postgresql://' + config.DB_USER_NAME + ':' + config.DB_PASSWORD + '@localhost/' + config.DB_NAME
 engine = create_engine(db_url, echo=False, pool_size=40, max_overflow=50)
 
-
 naming_convention = {
     "ix": "ix_%(column_0_label)s",
     "uq": "uq_%(table_name)s_%(column_0_name)s",
@@ -49,7 +48,6 @@ naming_convention = {
 }
 mapper_registry = registry(metadata=MetaData(naming_convention=naming_convention))
 Base = mapper_registry.generate_base()
-
 
 """
 Sorry if this is complex.  This lets us mix Python dataclasses with SQLAlchemy
@@ -78,8 +76,7 @@ class AdminRole:
 @dataclass
 class CurrentMap:
     """
-    The current map up to play - not necessarily a rotation map. The rotation
-    index is stored so we can find the next map.
+    The current map up to play.
 
     This table is intended to store one and only one row.
     """
@@ -87,23 +84,25 @@ class CurrentMap:
     __sa_dataclass_metadata_key__ = "sa"
     __tablename__ = "current_map"
 
-    map_rotation_index: int = field(metadata={"sa": Column(Integer)})
-    full_name: str = field(metadata={"sa": Column(String)})
-    short_name: str = field(metadata={"sa": Column(String)})
-    updated_at: datetime = field(
-        default_factory=lambda: datetime.now(timezone.utc),
-        init=False,
-        metadata={"sa": Column(DateTime, nullable=False, server_default=func.now())},
-    )
-    created_at: datetime = field(
-        default_factory=lambda: datetime.now(timezone.utc),
-        init=False,
-        metadata={"sa": Column(DateTime, nullable=False)},
-    )
     id: str = field(
         init=False,
         default_factory=lambda: str(uuid4()),
         metadata={"sa": Column(String, primary_key=True)},
+    )
+    map_id: str = field(
+        metadata={
+            "sa": Column(
+                String,
+                ForeignKey("map.id"),
+                nullable=False,
+                index=True,
+            )
+        }
+    )
+    updated_at: datetime = field(
+        default_factory=lambda: datetime.now(timezone.utc),
+        init=False,
+        metadata={"sa": Column(DateTime, nullable=False, server_default=func.now())},
     )
 
 
@@ -133,7 +132,6 @@ class CustomCommand:
 @mapper_registry.mapped
 @dataclass
 class FinishedGame:
-
     __sa_dataclass_metadata_key__ = "sa"
     __tablename__ = "finished_game"
 
@@ -193,7 +191,7 @@ class FinishedGamePlayer:
         metadata={"sa": Column(Integer, ForeignKey("player.id"), index=True)},
     )
     player_name: str = field(
-        metadata={ "sa": Column(String, nullable=False, index=True) },
+        metadata={"sa": Column(String, nullable=False, index=True)},
     )
     team: int = field(metadata={"sa": Column(Integer, nullable=False, index=True)})
     rated_trueskill_mu_after: float = field(
@@ -333,7 +331,6 @@ class MapVote:
     __tablename__ = "map_vote"
     __table_args__ = (UniqueConstraint("player_id", "voteable_map_id"),)
 
-    channel_id: int = field(metadata={"sa": Column(Integer, nullable=False)})
     player_id: int = field(
         metadata={
             "sa": Column(Integer, ForeignKey("player.id"), nullable=False, index=True)
@@ -342,7 +339,7 @@ class MapVote:
     voteable_map_id: str = field(
         metadata={
             "sa": Column(
-                String, ForeignKey("voteable_map.id"), nullable=False, index=True
+                String, ForeignKey("map.id"), nullable=False, index=True
             )
         },
     )
@@ -363,7 +360,6 @@ class SkipMapVote:
     __sa_dataclass_metadata_key__ = "sa"
     __tablename__ = "skip_map_vote"
 
-    channel_id: int = field(metadata={"sa": Column(Integer, nullable=False)})
     player_id: int = field(
         metadata={
             "sa": Column(
@@ -573,7 +569,8 @@ class QueuePlayer:
     """
     Players currently waiting in a queue
 
-    :channel_id: The channel that the user sent the message to join the queue
+    :channel_id: The channel that the user sent the message to join the queue.
+                 Used for AFK deletion.
     """
 
     __sa_dataclass_metadata_key__ = "sa"
@@ -650,7 +647,6 @@ class QueueWaitlist:
     __sa_dataclass_metadata_key__ = "sa"
     __tablename__ = "queue_waitlist"
 
-    channel_id: int = field(metadata={"sa": Column(Integer, nullable=False)})
     finished_game_id: str = field(
         metadata={
             "sa": Column(
@@ -715,54 +711,6 @@ class QueueWaitlistPlayer:
 
 @mapper_registry.mapped
 @dataclass
-class RotationMap:
-    """
-    A map that's part of the fixed rotation
-    """
-
-    __sa_dataclass_metadata_key__ = "sa"
-    __tablename__ = "rotation_map"
-
-    full_name: str = field(metadata={"sa": Column(String, unique=True, index=True)})
-    short_name: str = field(metadata={"sa": Column(String, unique=True, index=True)})
-    created_at: datetime = field(
-        default_factory=lambda: datetime.now(timezone.utc),
-        init=False,
-        metadata={"sa": Column(DateTime, index=True)},
-    )
-    id: str = field(
-        init=False,
-        default_factory=lambda: str(uuid4()),
-        metadata={"sa": Column(String, primary_key=True)},
-    )
-
-
-@mapper_registry.mapped
-@dataclass
-class VoteableMap:
-    """
-    A map that can be voted in to replace the current map in rotation
-    """
-
-    __sa_dataclass_metadata_key__ = "sa"
-    __tablename__ = "voteable_map"
-
-    full_name: str = field(metadata={"sa": Column(String, unique=True, index=True)})
-    short_name: str = field(metadata={"sa": Column(String, unique=True, index=True)})
-    created_at: datetime = field(
-        default_factory=lambda: datetime.now(timezone.utc),
-        init=False,
-        metadata={"sa": Column(DateTime, index=True)},
-    )
-    id: str = field(
-        init=False,
-        default_factory=lambda: str(uuid4()),
-        metadata={"sa": Column(String, primary_key=True)},
-    )
-
-
-@mapper_registry.mapped
-@dataclass
 class VotePassedWaitlist:
     """
     Queue players from adding after a vote passes. This is to avoid the race
@@ -811,6 +759,30 @@ class VotePassedWaitlistPlayer:
         default_factory=lambda: str(uuid4()),
         metadata={"sa": Column(String, primary_key=True)},
     )
+
+
+@mapper_registry.mapped
+@dataclass
+class Map:
+    """
+    Representation of maps that are in rotation, votable or inactive.
+    A rotation weight of 0 means it is not in rotation.
+    A map that has a weight of 0 and is not votable is inactive
+    """
+
+    __sa_dataclass_metadata_key__ = "sa"
+    __tablename__ = "map"
+
+    id: str = field(
+        init=False,
+        default_factory=lambda: str(uuid4()),
+        metadata={"sa": Column(String, primary_key=True)},
+    )
+    full_name: str = field(metadata={"sa": Column(String, unique=True, index=True, nullable=False)})
+    short_name: str = field(metadata={"sa": Column(String, unique=True, index=True, nullable=False)})
+    rotation_index: int = field(metadata={"sa": Column(Integer, unique=True, nullable=False)})
+    rotation_weight: int = field(metadata={"sa": Column(Integer, nullable=False)})
+    is_votable: bool = field(metadata={"sa": Column(Boolean, nullable=False)})
 
 
 Session: sessionmaker = sessionmaker(bind=engine)
