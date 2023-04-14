@@ -1009,12 +1009,13 @@ def map_status_str(full_status: bool) -> str:
                 else:
                     current_map_id = current_map.map_id if current_map else 'DUMMY'
                     current_rotation_index = current_map_full.rotation_index if current_map_full else -1
-                    rotation_maps: list[Map] = session.query(Map).filter(Map.rotation_weight > 0,
-                                                                         Map.id != current_map_id).order_by(
+                    other_rotation_maps: list[Map] = session.query(Map).filter(Map.rotation_weight > 0,
+                                                                               Map.id != current_map_id).order_by(
                         Map.rotation_index.asc()).all()  # type: ignore
-                    next_map = next(filter(lambda x: x.rotation_index > current_rotation_index, rotation_maps), None) or \
-                               rotation_maps[0]
-                    if current_map.map_rotation_index == 0:
+                    next_map = next(filter(lambda x: x.rotation_index > current_rotation_index, other_rotation_maps), None) or other_rotation_maps[0]
+                    first_rotation_map: Map = session.query(Map).filter(Map.rotation_weight > 0).order_by(
+                        Map.rotation_index.asc()).first()  # type: ignore
+                    if first_rotation_map and current_rotation_index == first_rotation_map.rotation_index:
                         output += f"_Map after next: {next_map.full_name} ({next_map.short_name})_\n"
                     else:
                         output += f"_Map after next (auto-rotates in {time_until_rotation} minutes): {next_map.full_name} ({next_map.short_name})_\n"

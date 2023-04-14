@@ -33,6 +33,7 @@ from .models import (
     SkipMapVote,
     VotePassedWaitlist,
     VotePassedWaitlistPlayer,
+    Map,
 )
 from .queues import AddPlayerQueueMessage, add_player_queue
 from .utils import send_message, update_current_map_to_next_map_in_rotation, get_current_map
@@ -293,9 +294,13 @@ async def map_rotation_task():
     """
     try:
         current_map, current_map_full = get_current_map()
-        if current_map and not config.RANDOM_MAP_ROTATION and current_map_full.rotation_index == 0:
-            # Stop at the first map
-            return
+        if current_map and not config.RANDOM_MAP_ROTATION:
+            with Session() as session:
+                first_rotation_map: Map = session.query(Map).filter(Map.rotation_weight > 0).order_by(
+                    Map.rotation_index.asc()).first()  # type: ignore
+                if first_rotation_map and current_map_full.rotation_index == first_rotation_map.rotation_index:
+                    # Stop at the first rotation map
+                    return
 
         if not current_map:
             await update_current_map_to_next_map_in_rotation()

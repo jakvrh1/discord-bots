@@ -31,6 +31,10 @@ log = define_logger(__name__)
 
 
 def get_current_map() -> tuple[CurrentMap, Map] | tuple[None, None]:
+    """
+    !WARNING! The objects are no longer tracked by the session. Treat them as immutable.
+    :return:
+    """
     with Session() as session:
         current_map: CurrentMap = session.query(CurrentMap).first()
         if current_map:
@@ -110,11 +114,16 @@ async def update_current_map_to_next_map_in_rotation():
                            rotation_maps[0]
 
             if current_map:
-                current_map.map_id = next_map.id
-                current_map.updated_at = datetime.now(timezone.utc)
+                # need to reload the current map, so it is tracked within this session
+                cm: CurrentMap = session.query(CurrentMap).first()
+                cm.map_id = next_map.id
+                cm.updated_at = datetime.now(timezone.utc)
             else:
                 session.add(CurrentMap(next_map.id))
 
+            session.query(MapVote).delete()
+            session.query(SkipMapVote).delete()
+            session.commit()
             channel = bot.get_channel(CHANNEL_ID)
             if isinstance(channel, discord.TextChannel):
                 await send_message(
@@ -122,9 +131,6 @@ async def update_current_map_to_next_map_in_rotation():
                     embed_description=f"Map automatically rotated to **{next_map.full_name}**, all votes removed",
                     colour=discord.Colour.blue(),
                 )
-            session.query(MapVote).delete()
-            session.query(SkipMapVote).delete()
-            session.commit()
 
 
 async def upload_stats_screenshot_selenium(ctx: Context, cleanup=True):
