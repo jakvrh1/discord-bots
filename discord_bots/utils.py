@@ -11,8 +11,6 @@ import imgkit
 from PIL import Image
 from discord import Colour, DMChannel, Embed, GroupChannel, TextChannel
 from discord.ext.commands.context import Context
-from selenium import webdriver
-from selenium.webdriver.firefox.options import Options as FirefoxOptions
 from trueskill import Rating, global_env
 
 from discord_bots.bot import bot
@@ -125,37 +123,6 @@ async def update_current_map_to_next_map_in_rotation():
                     embed_description=f"Map automatically rotated to **{next_map.full_name}**, all votes removed",
                     colour=discord.Colour.blue(),
                 )
-
-
-async def upload_stats_screenshot_selenium(ctx: Context, cleanup=True):
-    # Assume the most recently modified HTML file is the correct stat sheet
-    if not STATS_DIR:
-        return
-
-    html_files = list(filter(lambda x: x.endswith(".html"), os.listdir(STATS_DIR)))
-    html_files.sort(key=lambda x: os.path.getmtime(os.path.join(STATS_DIR, x)), reverse=True)
-
-    opts = FirefoxOptions()
-    opts.add_argument("--headless")
-    driver = webdriver.Firefox(options=opts)
-    if len(html_files) == 0:
-        return
-
-    driver.get("file://" + os.path.join(STATS_DIR, html_files[0]))
-    image_path = os.path.join(STATS_DIR, html_files[0] + ".png")
-    driver.save_screenshot(image_path)
-    image = Image.open(image_path)
-    # TODO: Un-hardcode these
-    cropped = image.crop((0, 0, 750, 650))
-    cropped.save(image_path)
-
-    await ctx.message.channel.send(file=discord.File(image_path))
-
-    # Clean up everything
-    if cleanup:
-        for file_ in os.listdir(STATS_DIR):
-            if file_.endswith(".png") or file_.endswith(".html"):
-                os.remove(os.path.join(STATS_DIR, file_))
 
 
 async def upload_stats_screenshot_imgkit(ctx: Context, cleanup=True):

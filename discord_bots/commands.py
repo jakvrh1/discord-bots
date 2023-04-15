@@ -26,7 +26,6 @@ from trueskill import Rating, rate
 import discord_bots.config as config
 from discord_bots.utils import (
     upload_stats_screenshot_imgkit,
-    upload_stats_screenshot_selenium,
     update_current_map,
 )
 from .bot import bot
@@ -1965,18 +1964,6 @@ async def finishgame(ctx: Context, outcome: str):
 
 @bot.command()
 @commands.check(is_admin)
-async def imagetest(ctx: Context):
-    await upload_stats_screenshot_selenium(ctx, False)
-
-
-@bot.command()
-@commands.check(is_admin)
-async def imagetest2(ctx: Context):
-    await upload_stats_screenshot_imgkit(ctx, False)
-
-
-@bot.command()
-@commands.check(is_admin)
 async def isolatequeue(ctx: Context, queue_name: str):
     message = ctx.message
     session = Session()
@@ -2212,12 +2199,12 @@ async def map_(ctx: Context):
 @bot.command()
 @commands.check(is_admin)
 async def mockrandomqueue(ctx: Context, *args):
-    message = ctx.message
     """
     Helper test method for adding random players to queues
 
     This will send PMs to players, create voice channels, etc. so be careful
     """
+    message = ctx.message
     if message.author.id not in config.MOCK_COMMAND_USERS:
         await send_message(
             message.channel,
@@ -2564,56 +2551,12 @@ async def removequeuerole(ctx: Context, queue_name: str, role_name: str):
 
 
 @bot.command()
-@commands.check(is_admin)
-async def removerotationmap(ctx: Context, map_short_name: str):
-    message = ctx.message
-    session = Session()
-    rotation_map = (
-        session.query(RotationMap).filter(RotationMap.short_name.ilike(map_short_name)).first()  # type: ignore
-    )
-    if rotation_map:
-        session.delete(rotation_map)
-        session.commit()
-        await send_message(
-            message.channel,
-            embed_description=f"{map_short_name} removed from map rotation",
-            colour=Colour.green(),
-        )
-    else:
-        await send_message(
-            message.channel,
-            embed_description=f"Could not find rotation map: {map_short_name}",
-            colour=Colour.red(),
-        )
-
-
-@bot.command()
 async def roll(ctx: Context, low_range: int, high_range: int):
     message = ctx.message
     await send_message(
         message.channel,
         embed_description=f"You rolled: {randint(low_range, high_range)}",
         colour=Colour.blue(),
-    )
-
-
-@bot.command()
-@commands.check(is_admin)
-async def resetplayertrueskill(ctx: Context, member: Member):
-    message = ctx.message
-    session = Session()
-    player: Player = session.query(Player).filter(Player.id == member.id).first()
-    default_rating = Rating(12.5)
-    player.rated_trueskill_mu = default_rating.mu
-    player.rated_trueskill_sigma = default_rating.sigma
-    player.unrated_trueskill_mu = default_rating.mu
-    player.unrated_trueskill_sigma = default_rating.sigma
-    session.commit()
-    session.close()
-    await send_message(
-        message.channel,
-        embed_description=f"{escape_markdown(member.name)} trueskill reset.",
-        colour=Colour.green(),
     )
 
 
@@ -2783,7 +2726,6 @@ async def showgamedebug(ctx: Context, game_id: str):
             .filter(FinishedGamePlayer.finished_game_id == finished_game.id)
             .all()
         )
-        player_ids: list[int] = [fgp.player_id for fgp in fgps]
         best_teams = get_n_best_finished_game_teams(
             fgps, (len(fgps) + 1) // 2, finished_game.is_rated, 5
         )
