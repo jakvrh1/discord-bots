@@ -209,3 +209,4 @@ def update_current_map(map_id: str) -> None:
             current_map.updated_at = datetime.now(timezone.utc)
         else:
             session.add(CurrentMap(map_id))
+        session.commit()
