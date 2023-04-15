@@ -27,6 +27,7 @@ import discord_bots.config as config
 from discord_bots.utils import (
     upload_stats_screenshot_imgkit,
     upload_stats_screenshot_selenium,
+    update_current_map,
 )
 from .bot import bot
 from .models import (
@@ -57,7 +58,7 @@ from .names import generate_be_name, generate_ds_name
 from .queues import AddPlayerQueueMessage, add_player_queue
 from .twitch import twitch
 from .utils import (
-    get_current_map,
+    get_current_map_readonly,
     mean,
     pretty_format_team,
     send_message,
@@ -387,7 +388,7 @@ async def add_player_to_queue(
             average_trueskill = mean(
                 list(map(lambda x: x.unrated_trueskill_mu, players))
             )
-        current_map, current_map_full = get_current_map()
+        current_map, current_map_full = get_current_map_readonly()
         game = InProgressGame(
             average_trueskill=average_trueskill,
             map_full_name=current_map_full.full_name if current_map_full else "",
@@ -992,7 +993,7 @@ def get_player_game(player_id: int, session=None) -> InProgressGame | None:
 def map_status_str(full_status: bool) -> str:
     with Session() as session:
         output = ""
-        current_map, current_map_full = get_current_map()
+        current_map, current_map_full = get_current_map_readonly()
         if current_map:
             output += f"**Next map: {current_map_full.full_name} ({current_map_full.short_name})**\n"
 
@@ -1500,13 +1501,13 @@ async def del_(ctx: Context, *args):
     message = ctx.message
     with Session() as session:
         queues_to_del: list[Queue] = []
-        all_queues: list(Queue) = session.query(Queue).join(QueuePlayer).filter(
+        all_queues: list[Queue] = session.query(Queue).join(QueuePlayer).filter(
             QueuePlayer.player_id == message.author.id).order_by(Queue.created_at.asc()).all()  # type: ignore
         if len(args) == 0:
             queues_to_del = all_queues
         else:
             for arg in args:
-                # Try remove by integer index first, then try string name
+                # Try to remove by integer index first, then try string name
                 try:
                     queue_index = int(arg) - 1
                     queues_to_del.append(all_queues[queue_index])
@@ -3611,7 +3612,7 @@ async def votemap(ctx: Context, map_short_name: str):
 
 async def voteskip_passed(message: Message):
     await update_current_map_to_next_map_in_rotation()
-    current_map, current_map_full = get_current_map()
+    current_map, current_map_full = get_current_map_readonly()
     await send_message(
         message.channel,
         embed_description=f"Vote to skip the current map passed!\n**New map: {current_map_full.full_name} ({current_map_full.short_name})**",
@@ -3659,20 +3660,6 @@ async def voteskip(ctx: Context):
                 embed_description=f"Added vote to skip the current map.\n!unvoteskip to remove vote.\nVotes to skip: [{len(skip_map_votes)}/{config.MAP_VOTE_THRESHOLD}]",
                 colour=Colour.green(),
             )
-
-
-@bot.command()
-@commands.check(is_admin)
-async def forceskip(ctx: Context):
-    message = ctx.message
-    if message.author.id not in config.MOCK_COMMAND_USERS:
-        await send_message(
-            message.channel,
-            embed_description="Only special people can use this command",
-            colour=Colour.red(),
-        )
-        return
-    await voteskip_passed(message)
 
 
 @bot.command()
@@ -3813,7 +3800,7 @@ async def removemap(ctx: Context, short_name: str):
             )
             return
 
-        current_map, current_map_full = get_current_map()
+        current_map, current_map_full = get_current_map_readonly()
         deleting_current_map = current_map and the_map.id == current_map.map_id
 
         session.query(MapVote).filter(MapVote.voteable_map_id == the_map.id).delete()
@@ -3883,7 +3870,7 @@ async def reordermap(ctx: Context, short_name: str, new_position: int):
 
 @bot.command()
 @commands.check(is_admin)
-async def changequeuemap(ctx: Context, short_name: str):
+async def forcequeuemap(ctx: Context, short_name: str):
     message = ctx.message
     with Session() as session:
         the_map: Map | None = session.query(Map).filter(Map.short_name == short_name).first()
@@ -3894,9 +3881,7 @@ async def changequeuemap(ctx: Context, short_name: str):
                 colour=Colour.red(),
             )
             return
-        current_map, current_map_full = get_current_map()
-        current_map.map_id = the_map.id
-        current_map.updated_at = datetime.now(timezone.utc)
+        update_current_map(the_map.id)
         session.query(MapVote).delete()
         session.query(SkipMapVote).delete()
         await send_message(
@@ -3904,12 +3889,11 @@ async def changequeuemap(ctx: Context, short_name: str):
             embed_description=f"Map changed to {short_name}. All votes removed.",
             colour=Colour.green(),
         )
-        session.commit()
 
 
 @bot.command()
 @commands.check(is_admin)
-async def changegamemap(ctx: Context, game_id: str, short_name: str):
+async def forcegamemap(ctx: Context, game_id: str, short_name: str):
     message = ctx.message
     with Session() as session:
         ipg: InProgressGame | None = (
@@ -3942,3 +3926,10 @@ async def changegamemap(ctx: Context, game_id: str, short_name: str):
             colour=Colour.green(),
         )
         session.commit()
+
+
+@bot.command()
+@commands.check(is_admin)
+async def forceskip(ctx: Context):
+    message = ctx.message
+    await voteskip_passed(message)

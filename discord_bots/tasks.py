@@ -36,7 +36,7 @@ from .models import (
     Map,
 )
 from .queues import AddPlayerQueueMessage, add_player_queue
-from .utils import send_message, update_current_map_to_next_map_in_rotation, get_current_map
+from .utils import send_message, update_current_map_to_next_map_in_rotation, get_current_map_readonly
 
 log = define_logger(__name__)
 
@@ -293,7 +293,7 @@ async def map_rotation_task():
     Rotate the map automatically, stopping on the 0th map
     """
     try:
-        current_map, current_map_full = get_current_map()
+        current_map, current_map_full = get_current_map_readonly()
         if current_map and not config.RANDOM_MAP_ROTATION:
             with Session() as session:
                 first_rotation_map: Map = session.query(Map).filter(Map.rotation_weight > 0).order_by(

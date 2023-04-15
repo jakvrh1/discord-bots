@@ -30,13 +30,13 @@ from discord_bots.models import (
 log = define_logger(__name__)
 
 
-def get_current_map() -> tuple[CurrentMap, Map] | tuple[None, None]:
+def get_current_map_readonly() -> tuple[CurrentMap, Map] | tuple[None, None]:
     """
     !WARNING! The objects are no longer tracked by the session. Treat them as immutable.
     :return:
     """
     with Session() as session:
-        current_map: CurrentMap = session.query(CurrentMap).first()
+        current_map: CurrentMap | None = session.query(CurrentMap).first()
         if current_map:
             current_map_full: Map = session.query(Map).join(CurrentMap).filter(CurrentMap.map_id == Map.id).first()
             return current_map, current_map_full
@@ -97,7 +97,7 @@ async def send_message(
 
 async def update_current_map_to_next_map_in_rotation():
     with Session() as session:
-        current_map, current_map_full = get_current_map()
+        current_map, current_map_full = get_current_map_readonly()
         current_map_id = current_map.map_id if current_map else 'DUMMY'
         current_rotation_index = current_map_full.rotation_index if current_map_full else -1
 
@@ -113,13 +113,7 @@ async def update_current_map_to_next_map_in_rotation():
                 next_map = next(filter(lambda x: x.rotation_index > current_rotation_index, rotation_maps), None) or \
                            rotation_maps[0]
 
-            if current_map:
-                # need to reload the current map, so it is tracked within this session
-                cm: CurrentMap = session.query(CurrentMap).first()
-                cm.map_id = next_map.id
-                cm.updated_at = datetime.now(timezone.utc)
-            else:
-                session.add(CurrentMap(next_map.id))
+            update_current_map(next_map.id)
 
             session.query(MapVote).delete()
             session.query(SkipMapVote).delete()
@@ -205,3 +199,13 @@ def win_probability(team0: list[Rating], team1: list[Rating]) -> float:
     trueskill = global_env()
 
     return trueskill.cdf(delta_mu / denom)
+
+
+def update_current_map(map_id: str) -> None:
+    with Session() as session:
+        current_map: CurrentMap | None = session.query(CurrentMap).first()
+        if current_map:
+            current_map.map_id = map_id
+            current_map.updated_at = datetime.now(timezone.utc)
+        else:
+            session.add(CurrentMap(map_id))
