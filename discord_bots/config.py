@@ -19,7 +19,7 @@ def to_string(key: str, required: bool = False, default: str | None = None) -> s
         return value
 
 
-def to_int2(key: str, required: bool = False, default: int | None = None) -> int | None:
+def to_int(key: str, required: bool = False, default: int | None = None) -> int | None:
     value = os.getenv(key)
     try:
         return int(value)
@@ -31,7 +31,7 @@ def to_int2(key: str, required: bool = False, default: int | None = None) -> int
         return default
 
 
-def to_float2(key: str, required: bool = False, default: float | None = None) -> float | None:
+def to_float(key: str, required: bool = False, default: float | None = None) -> float | None:
     value = os.getenv(key)
     try:
         return float(value)
@@ -66,8 +66,8 @@ def convert_to_int(value: str) -> int | None:
 
 # Discord setup
 API_KEY: str = to_string(key="DISCORD_API_KEY", required=True)
-CHANNEL_ID: int = to_int2(key="CHANNEL_ID", required=True)
-TRIBES_VOICE_CATEGORY_CHANNEL_ID: int = to_int2(key="TRIBES_VOICE_CATEGORY_CHANNEL_ID", required=True)
+CHANNEL_ID: int = to_int(key="CHANNEL_ID", required=True)
+TRIBES_VOICE_CATEGORY_CHANNEL_ID: int = to_int(key="TRIBES_VOICE_CATEGORY_CHANNEL_ID", required=True)
 admin_ids = os.getenv("SEED_ADMIN_IDS").split(",") if os.getenv("SEED_ADMIN_IDS") else []
 SEED_ADMIN_IDS: list[int] = list(filter(lambda x: x is not None, map(convert_to_int, admin_ids)))
 if not len(SEED_ADMIN_IDS):
@@ -90,19 +90,19 @@ COMMAND_PREFIX: str = to_string(key="COMMAND_PREFIX", default="!")
 SHOW_TRUESKILL: bool = to_bool(key="SHOW_TRUESKILL", default=False)
 SHOW_TRUESKILL_DETAILS: bool = to_bool(key="SHOW_TRUESKILL_DETAILS", default=False)
 RANDOM_MAP_ROTATION: bool = to_bool(key="RANDOM_MAP_ROTATION", default=False)
-AFK_TIME_MINUTES: int = to_int2(key="AFK_TIME_MINUTES", default=45)
-MAP_ROTATION_MINUTES: int = to_int2(key="MAP_ROTATION_MINUTES", default=60)
-MAP_VOTE_THRESHOLD: int = to_int2(key="MAP_VOTE_THRESHOLD", default=7)
-RE_ADD_DELAY_SECONDS: int = to_int2(key="RE_ADD_DELAY", default=30)
-DEFAULT_TRUESKILL_MU: float | None = to_float2(key="DEFAULT_TRUESKILL_MU")
-DEFAULT_TRUESKILL_SIGMA: float | None = to_float2(key="DEFAULT_TRUESKILL_MU")
+AFK_TIME_MINUTES: int = to_int(key="AFK_TIME_MINUTES", default=45)
+MAP_ROTATION_MINUTES: int = to_int(key="MAP_ROTATION_MINUTES", default=60)
+MAP_VOTE_THRESHOLD: int = to_int(key="MAP_VOTE_THRESHOLD", default=7)
+RE_ADD_DELAY_SECONDS: int = to_int(key="RE_ADD_DELAY", default=30)
+DEFAULT_TRUESKILL_MU: float | None = to_float(key="DEFAULT_TRUESKILL_MU")
+DEFAULT_TRUESKILL_SIGMA: float | None = to_float(key="DEFAULT_TRUESKILL_MU")
 DISABLE_PRIVATE_MESSAGES = to_bool(key="DISABLE_PRIVATE_MESSAGES", default=False)
 POP_RANDOM_QUEUE = to_bool(key="POP_RANDOM_QUEUE", default=True)
 
 # stats
 STATS_DIR: str | None = to_string(key="STATS_DIR")
-STATS_HEIGHT: int | None = to_int2(key="STATS_HEIGHT")
-STATS_WIDTH: int | None = to_int2(key="STATS_WIDTH")
+STATS_HEIGHT: int | None = to_int(key="STATS_HEIGHT")
+STATS_WIDTH: int | None = to_int(key="STATS_WIDTH")
 
 # Twitch integration
 TWITCH_CLIENT_ID: str | None = to_string(key="TWITCH_CLIENT_ID")

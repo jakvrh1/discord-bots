@@ -43,6 +43,18 @@ def create_seed_admins():
 @bot.event
 async def on_ready():
     log.info(f"Logged in as {bot.user} (ID: {bot.user.id})")
+
+    channel = bot.get_channel(CHANNEL_ID)
+    if not channel:
+        log.error("Could not find text channel for the bot to live in. Shutting down bot.")
+        await bot.logout()
+        return
+    guild = channel.guild
+    if not guild:
+        log.error("Text channel of the bot dies not belong to a guild (server). Shutting down bot.")
+        await bot.logout()
+        return
+
     add_player_task.start()
     afk_timer_task.start()
     map_rotation_task.start()
@@ -178,11 +190,12 @@ async def on_leave(member: Member):
 
 
 def main():
-    if CONFIG_VALID:
-        create_seed_admins()
-        bot.run(API_KEY)
-    else:
+    if not CONFIG_VALID:
         log.error("You must provide a valid config!")
+        return
+
+    create_seed_admins()
+    bot.run(API_KEY)
 
 
 if __name__ == "__main__":

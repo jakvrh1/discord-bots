@@ -14,10 +14,9 @@ import discord
 import imgkit
 import numpy
 from PIL import Image
-from discord import Colour, DMChannel, Embed, GroupChannel, Message, TextChannel
+from discord import Colour, Embed, Message
 from discord.ext import commands
 from discord.ext.commands.context import Context
-from discord.guild import Guild
 from discord.member import Member
 from discord.utils import escape_markdown
 from sqlalchemy.exc import IntegrityError
@@ -318,12 +317,7 @@ def get_n_worst_finished_game_teams(
     return get_n_finished_game_teams(fgps, team_size, is_rated, n, -1)
 
 
-async def add_player_to_queue(
-        queue_id: str,
-        player_id: int,
-        channel: TextChannel | DMChannel | GroupChannel,
-        guild: Guild,
-) -> tuple[bool, bool]:
+async def add_player_to_queue(queue_id: str, player_id: int) -> tuple[bool, bool]:
     """
     Helper function to add player to a queue and pop if needed.
 
@@ -335,6 +329,7 @@ async def add_player_to_queue(
     """
     session = Session()
     queue_roles = session.query(QueueRole).filter(QueueRole.queue_id == queue_id).all()
+    guild = bot.get_channel(config.CHANNEL_ID).guild
 
     # Zero queue roles means no role restrictions
     if len(queue_roles) > 0:
@@ -354,7 +349,6 @@ async def add_player_to_queue(
         QueuePlayer(
             queue_id=queue_id,
             player_id=player_id,
-            channel_id=channel.id,
         )
     )
     try:
@@ -454,6 +448,7 @@ async def add_player_to_queue(
             )
             session.add(game_player)
 
+        channel = bot.get_channel(config.CHANNEL_ID)
         await send_message(
             channel,
             content=message_content,
@@ -1012,7 +1007,8 @@ def map_status_str(full_status: bool) -> str:
                     other_rotation_maps: list[Map] = session.query(Map).filter(Map.rotation_weight > 0,
                                                                                Map.id != current_map_id).order_by(
                         Map.rotation_index.asc()).all()  # type: ignore
-                    next_map = next(filter(lambda x: x.rotation_index > current_rotation_index, other_rotation_maps), None) or other_rotation_maps[0]
+                    next_map = next(filter(lambda x: x.rotation_index > current_rotation_index, other_rotation_maps),
+                                    None) or other_rotation_maps[0]
                     first_rotation_map: Map = session.query(Map).filter(Map.rotation_weight > 0).order_by(
                         Map.rotation_index.asc()).first()  # type: ignore
                     if first_rotation_map and current_rotation_index == first_rotation_map.rotation_index:
@@ -1183,25 +1179,21 @@ async def add(ctx: Context, *args):
 
             await send_message(
                 message.channel,
-                # TODO: Populate this message with the queues the player was
-                # eligible for
+                # TODO: Populate this message with the queues the player was eligible for
                 content=f"{escape_markdown(message.author.display_name)} added to:",
                 embed_description=waitlist_message,
                 colour=Colour.green(),
             )
             return
 
-        if isinstance(message.channel, TextChannel) and message.guild:
-            add_player_queue.put(
-                AddPlayerQueueMessage(
-                    message.author.id,
-                    message.author.display_name,
-                    [q.id for q in queues_to_add],
-                    True,
-                    message.channel,
-                    message.guild,
-                )
+        add_player_queue.put(
+            AddPlayerQueueMessage(
+                message.author.id,
+                message.author.display_name,
+                [q.id for q in queues_to_add],
+                True
             )
+        )
 
 
 @bot.command()
@@ -1392,14 +1384,13 @@ async def cancelgame(ctx: Context, game_id: str):
     session.query(InProgressGamePlayer).filter(
         InProgressGamePlayer.in_progress_game_id == game.id
     ).delete()
-    for channel in session.query(InProgressGameChannel).filter(
+    for ipg_channel in session.query(InProgressGameChannel).filter(
             InProgressGameChannel.in_progress_game_id == game.id
     ):
-        if message.guild:
-            guild_channel = message.guild.get_channel(channel.channel_id)
-            if guild_channel:
-                await guild_channel.delete()
-        session.delete(channel)
+        voice_channel = bot.get_channel(ipg_channel.channel_id)
+        if voice_channel:
+            await voice_channel.delete()
+        session.delete(ipg_channel)
 
     session.query(InProgressGame).filter(
         InProgressGame.id == game.id
@@ -1938,17 +1929,15 @@ async def finishgame(ctx: Context, outcome: str):
             f"**Tie game**\n**Duration:** {duration.seconds // 60} minutes"
         )
     queue = session.query(Queue).filter(Queue.id == in_progress_game.queue_id).first()
-    if message.guild:
-        session.add(
-            QueueWaitlist(
-                finished_game_id=finished_game.id,
-                guild_id=message.guild.id,
-                in_progress_game_id=in_progress_game.id,
-                queue_id=queue.id,
-                end_waitlist_at=datetime.now(timezone.utc)
-                                + timedelta(seconds=config.RE_ADD_DELAY_SECONDS),
-            )
+    session.add(
+        QueueWaitlist(
+            finished_game_id=finished_game.id,
+            in_progress_game_id=in_progress_game.id,
+            queue_id=queue.id,
+            end_waitlist_at=datetime.now(timezone.utc)
+                            + timedelta(seconds=config.RE_ADD_DELAY_SECONDS),
         )
+    )
     session.commit()
     queue_name = queue.name
     short_in_progress_game_id = in_progress_game.id.split("-")[0]
@@ -2236,20 +2225,17 @@ async def mockrandomqueue(ctx: Context, *args):
     for player in numpy.random.choice(
             players_from_last_30_days, size=int(args[1]), replace=False
     ):
-        if isinstance(message.channel, TextChannel) and message.guild:
-            add_player_queue.put(
-                AddPlayerQueueMessage(
-                    player.id,
-                    player.name,
-                    [queue.id],
-                    False,
-                    message.channel,
-                    message.guild,
-                )
+        add_player_queue.put(
+            AddPlayerQueueMessage(
+                player.id,
+                player.name,
+                [queue.id],
+                False
             )
-            player.last_activity_at = datetime.now(timezone.utc)
-            session.add(player)
-            session.commit()
+        )
+        player.last_activity_at = datetime.now(timezone.utc)
+        session.add(player)
+        session.commit()
 
 
 @bot.command()
@@ -3231,22 +3217,22 @@ async def sub(ctx: Context, member: Member):
     channel_embed += pretty_format_team(game.team0_name, win_prob, team0_players)
     channel_embed += pretty_format_team(game.team1_name, 1 - win_prob, team1_players)
 
+    guild = message.channel.guild
     for player in team0_players:
         # TODO: This block is duplicated
         if not config.DISABLE_PRIVATE_MESSAGES:
-            if message.guild:
-                member_: Member | None = message.guild.get_member(player.id)
-                if member_:
-                    try:
-                        await member_.send(
-                            content=channel_message,
-                            embed=Embed(
-                                description=f"{channel_embed}",
-                                colour=Colour.blue(),
-                            ),
-                        )
-                    except Exception:
-                        pass
+            member_: Member | None = guild.get_member(player.id)
+            if member_:
+                try:
+                    await member_.send(
+                        content=channel_message,
+                        embed=Embed(
+                            description=f"{channel_embed}",
+                            colour=Colour.blue(),
+                        ),
+                    )
+                except Exception:
+                    pass
 
         game_player = InProgressGamePlayer(
             in_progress_game_id=game.id,
@@ -3258,19 +3244,18 @@ async def sub(ctx: Context, member: Member):
     for player in team1_players:
         # TODO: This block is duplicated
         if not config.DISABLE_PRIVATE_MESSAGES:
-            if message.guild:
-                member_: Member | None = message.guild.get_member(player.id)
-                if member_:
-                    try:
-                        await member_.send(
-                            content=channel_message,
-                            embed=Embed(
-                                description=f"{channel_embed}",
-                                colour=Colour.blue(),
-                            ),
-                        )
-                    except Exception:
-                        pass
+            member_: Member | None = guild.get_member(player.id)
+            if member_:
+                try:
+                    await member_.send(
+                        content=channel_message,
+                        embed=Embed(
+                            description=f"{channel_embed}",
+                            colour=Colour.blue(),
+                        ),
+                    )
+                except Exception:
+                    pass
 
         game_player = InProgressGamePlayer(
             in_progress_game_id=game.id,
@@ -3520,16 +3505,13 @@ async def votemap(ctx: Context, map_short_name: str):
             )
             session.query(MapVote).delete()
             session.query(SkipMapVote).delete()
-            if message.guild:
-                # TODO: Check if another vote already exists
-                session.add(
-                    VotePassedWaitlist(
-                        channel_id=message.channel.id,
-                        guild_id=message.guild.id,
-                        end_waitlist_at=datetime.now(timezone.utc)
-                                        + timedelta(seconds=config.RE_ADD_DELAY_SECONDS),
-                    )
+            # TODO: Check if another vote already exists
+            session.add(
+                VotePassedWaitlist(
+                    end_waitlist_at=datetime.now(timezone.utc)
+                                    + timedelta(seconds=config.RE_ADD_DELAY_SECONDS),
                 )
+            )
             session.commit()
         else:
             map_votes: list[MapVote] = session.query(MapVote).all()
@@ -3564,18 +3546,15 @@ async def voteskip_passed(message: Message):
     with Session() as session:
         session.query(MapVote).delete()
         session.query(SkipMapVote).delete()
-        if message.guild:
-            # TODO: Might be bugs if two votes pass one after the other
-            vpw: VotePassedWaitlist | None = session.query(VotePassedWaitlist).first()
-            if not vpw:
-                session.add(
-                    VotePassedWaitlist(
-                        channel_id=message.channel.id,
-                        guild_id=message.guild.id,
-                        end_waitlist_at=datetime.now(timezone.utc)
-                                        + timedelta(seconds=config.RE_ADD_DELAY_SECONDS),
-                    )
+        # TODO: Might be bugs if two votes pass one after the other
+        vpw: VotePassedWaitlist | None = session.query(VotePassedWaitlist).first()
+        if not vpw:
+            session.add(
+                VotePassedWaitlist(
+                    end_waitlist_at=datetime.now(timezone.utc)
+                                    + timedelta(seconds=config.RE_ADD_DELAY_SECONDS),
                 )
+            )
         session.commit()
 
 

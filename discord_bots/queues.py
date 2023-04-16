@@ -3,9 +3,6 @@
 from dataclasses import dataclass
 from queue import SimpleQueue
 
-from discord.channel import TextChannel
-from discord.guild import Guild
-
 add_player_queue: SimpleQueue = SimpleQueue()
 
 
@@ -21,5 +18,3 @@ class AddPlayerQueueMessage:
     player_name: str
     queue_ids: list[str]
     should_print_status: bool
-    channel: TextChannel
-    guild: Guild

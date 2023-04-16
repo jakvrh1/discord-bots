@@ -568,9 +568,6 @@ class QueueNotification:
 class QueuePlayer:
     """
     Players currently waiting in a queue
-
-    :channel_id: The channel that the user sent the message to join the queue.
-                 Used for AFK deletion.
     """
 
     __sa_dataclass_metadata_key__ = "sa"
@@ -587,7 +584,6 @@ class QueuePlayer:
             "sa": Column(Integer, ForeignKey("player.id"), nullable=False, index=True)
         },
     )
-    channel_id: int = field(metadata={"sa": Column(Integer, nullable=False)})
     id: str = field(
         init=False,
         default_factory=lambda: str(uuid4()),
@@ -654,7 +650,6 @@ class QueueWaitlist:
             )
         },
     )
-    guild_id: int = field(metadata={"sa": Column(Integer, nullable=False)})
     in_progress_game_id: str = field(
         metadata={
             "sa": Column(
@@ -721,8 +716,6 @@ class VotePassedWaitlist:
     __sa_dataclass_metadata_key__ = "sa"
     __tablename__ = "vote_passed_waitlist"
 
-    channel_id: int = field(metadata={"sa": Column(Integer, nullable=False)})
-    guild_id: int = field(metadata={"sa": Column(Integer, nullable=False)})
     end_waitlist_at: datetime = field(
         metadata={"sa": Column(DateTime, index=True, nullable=False)},
     )
