@@ -89,8 +89,13 @@ async def send_message(
         embed.colour = colour
     try:
         await channel.send(content=content, embed=embed)
-    except Exception as e:
-        log.error(f"[send_message] exception: {e}")
+    except Exception:
+        log.exception(f"Error sending message:\n"
+                      f"\tcontent: {content}\n"
+                      f"\tembed_title: ${embed_title}\n"
+                      f"\tembed_description: ${embed_description}\n"
+                      f"\tembed_thumbnail: ${embed_thumbnail}\n"
+                      f"\tcolour: ${colour}")
 
 
 async def update_current_map_to_next_map_in_rotation():
