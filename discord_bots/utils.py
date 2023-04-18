@@ -92,10 +92,10 @@ async def send_message(
     except Exception:
         log.exception(f"Error sending message:\n"
                       f"\tcontent: {content}\n"
-                      f"\tembed_title: ${embed_title}\n"
-                      f"\tembed_description: ${embed_description}\n"
-                      f"\tembed_thumbnail: ${embed_thumbnail}\n"
-                      f"\tcolour: ${colour}")
+                      f"\tembed_title: {embed_title}\n"
+                      f"\tembed_description: {embed_description}\n"
+                      f"\tembed_thumbnail: {embed_thumbnail}\n"
+                      f"\tcolour: {colour}")
 
 
 async def update_current_map_to_next_map_in_rotation():
