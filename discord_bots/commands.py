@@ -1988,19 +1988,19 @@ async def leaderboard(ctx: Context, *args):
         )
         return
 
-    if len(args) != 1:
+    if len(args) > 1:
         await send_message(
             ctx.message.channel,
-            embed_description="Usage: !leaderboard <queue_region>",
+            embed_description="Usage: !leaderboard or !leaderboard <queue_region>",
             colour=Colour.red(),
         )
         return
 
     with Session() as session:
-        output = "**Leaderboard**"
-        queue_regions: list[QueueRegion] = session.query(QueueRegion).filter(args[0] == QueueRegion.name).all()
-        if len(queue_regions) > 0:
-            for queue_region in queue_regions:
+        if len(args) > 0:
+            queue_region: QueueRegion | None = session.query(QueueRegion).filter(args[0] == QueueRegion.name).first()
+            if queue_region:
+                output = "**Leaderboard**"
                 output += f"\n_{queue_region.name}_"
                 top_10_prts: list[PlayerRegionTrueskill] = (
                     session.query(PlayerRegionTrueskill)
@@ -2015,7 +2015,14 @@ async def leaderboard(ctx: Context, *args):
                         output += f" _(mu: {round(prt.rated_trueskill_mu, 1)}, sigma: {round(prt.rated_trueskill_sigma, 1)})_"
 
                 output += "\n"
-            pass
+                output += "\n(Ranks calculated using the formula: _mu - 3*sigma_)"
+                await send_message(
+                    ctx.message.channel, embed_description=output, colour=Colour.blue()
+                )
+            else:
+                await send_message(
+                    ctx.message.channel, embed_description=f"Queueregion {args[0]} not found", colour=Colour.red()
+                )
         else:
             output = "**Leaderboard**\nranked"
             top_10_players: list[Player] = (
@@ -2025,10 +2032,10 @@ async def leaderboard(ctx: Context, *args):
                 output += f"\n{i}. {round(player.leaderboard_trueskill, 1)} - {player.name}"
                 if config.SHOW_TRUESKILL_DETAILS:
                     output += f" _(mu: {round(player.rated_trueskill_mu, 1)}, sigma: {round(player.rated_trueskill_sigma, 1)})_"
-        output += "\n(Ranks calculated using the formula: _mu - 3*sigma_)"
-        await send_message(
-            ctx.message.channel, embed_description=output, colour=Colour.blue()
-        )
+            output += "\n(Ranks calculated using the formula: _mu - 3*sigma_)"
+            await send_message(
+                ctx.message.channel, embed_description=output, colour=Colour.blue()
+            )
 
 
 @bot.command()
