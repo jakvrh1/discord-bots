@@ -14,6 +14,7 @@ from sqlalchemy import (
     String,
     UniqueConstraint,
     create_engine,
+    BigInteger,
 )
 from sqlalchemy.ext.hybrid import hybrid_property
 # pylance issue with sqlalchemy:
@@ -63,7 +64,7 @@ class AdminRole:
     __tablename__ = "admin_role"
 
     role_id: int = field(
-        metadata={"sa": Column(Integer, nullable=False)},
+        metadata={"sa": Column(BigInteger, nullable=False)},
     )
     id: str = field(
         init=False,
@@ -282,7 +283,7 @@ class InProgressGamePlayer:
     )
     player_id: int = field(
         metadata={
-            "sa": Column(Integer, ForeignKey("player.id"), nullable=False, index=True)
+            "sa": Column(BigInteger, ForeignKey("player.id"), nullable=False, index=True)
         },
     )
     team: int = field(metadata={"sa": Column(Integer, nullable=False, index=True)})
@@ -311,7 +312,7 @@ class InProgressGameChannel:
         },
     )
     channel_id: int = field(
-        metadata={"sa": Column(Integer, nullable=False)},
+        metadata={"sa": Column(BigInteger, nullable=False)},
     )
     id: str = field(
         init=False,
@@ -333,7 +334,7 @@ class MapVote:
 
     player_id: int = field(
         metadata={
-            "sa": Column(Integer, ForeignKey("player.id"), nullable=False, index=True)
+            "sa": Column(BigInteger, ForeignKey("player.id"), nullable=False, index=True)
         }
     )
     voteable_map_id: str = field(
@@ -363,7 +364,7 @@ class SkipMapVote:
     player_id: int = field(
         metadata={
             "sa": Column(
-                Integer,
+                BigInteger,
                 ForeignKey("player.id"),
                 nullable=False,
                 unique=True,
@@ -397,7 +398,7 @@ class Player:
     __sa_dataclass_metadata_key__ = "sa"
     __tablename__ = "player"
 
-    id: int = field(metadata={"sa": Column(Integer, primary_key=True)})
+    id: int = field(metadata={"sa": Column(BigInteger, primary_key=True)})
     name: str = field(metadata={"sa": Column(String, nullable=False)})
     is_admin: bool = field(
         default=False, metadata={"sa": Column(Boolean, nullable=False)}
@@ -442,7 +443,7 @@ class PlayerRegionTrueskill:
 
     player_id: int = field(
         metadata={
-            "sa": Column(Integer, ForeignKey("player.id"), nullable=False, index=True)
+            "sa": Column(BigInteger, ForeignKey("player.id"), nullable=False, index=True)
         },
     )
     queue_region_id: str = field(
@@ -547,7 +548,7 @@ class QueueNotification:
     )
     player_id: int = field(
         metadata={
-            "sa": Column(Integer, ForeignKey("player.id"), nullable=False, index=True)
+            "sa": Column(BigInteger, ForeignKey("player.id"), nullable=False, index=True)
         },
     )
     size: int = field(metadata={"sa": Column(Integer, nullable=False, index=True)})
@@ -581,7 +582,7 @@ class QueuePlayer:
     )
     player_id: int = field(
         metadata={
-            "sa": Column(Integer, ForeignKey("player.id"), nullable=False, index=True)
+            "sa": Column(BigInteger, ForeignKey("player.id"), nullable=False, index=True)
         },
     )
     id: str = field(
@@ -621,7 +622,7 @@ class QueueRole:
         },
     )
     role_id: int = field(
-        metadata={"sa": Column(Integer, nullable=False)},
+        metadata={"sa": Column(BigInteger, nullable=False)},
     )
     id: str = field(
         init=False,
@@ -695,7 +696,7 @@ class QueueWaitlistPlayer:
         },
     )
     player_id: int = field(
-        metadata={"sa": Column(Integer, ForeignKey("player.id"), nullable=False)},
+        metadata={"sa": Column(BigInteger, ForeignKey("player.id"), nullable=False)},
     )
     id: str = field(
         init=False,
@@ -744,7 +745,7 @@ class VotePassedWaitlistPlayer:
         }
     )
     player_id: int = field(
-        metadata={"sa": Column(Integer, ForeignKey("player.id"), nullable=False)},
+        metadata={"sa": Column(BigInteger, ForeignKey("player.id"), nullable=False)},
     )
     queue_id: str = field(metadata={"sa": Column(String, ForeignKey("queue.id"))})
     id: str = field(
