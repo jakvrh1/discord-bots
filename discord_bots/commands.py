@@ -2994,6 +2994,10 @@ async def stats(ctx: Context):
         winrate = win_rate(len(wins), len(losses), len(ties))
         total_games = len(fgs)
 
+        def last_week(finished_game: FinishedGame) -> bool:
+            return finished_game.finished_at.timestamp() > datetime.now().timestamp() - timedelta(
+                days=7).total_seconds()
+
         def last_month(finished_game: FinishedGame) -> bool:
             return finished_game.finished_at.timestamp() > datetime.now().timestamp() - timedelta(
                 days=30).total_seconds()
@@ -3002,34 +3006,31 @@ async def stats(ctx: Context):
             return finished_game.finished_at.timestamp() > datetime.now().timestamp() - timedelta(
                 days=90).total_seconds()
 
-        def last_six_months(finished_game: FinishedGame) -> bool:
-            return finished_game.finished_at.timestamp() > datetime.now().timestamp() - timedelta(
-                days=180).total_seconds()
-
         def last_year(finished_game: FinishedGame) -> bool:
             return finished_game.finished_at.timestamp() > datetime.now().timestamp() - timedelta(
                 days=365).total_seconds()
 
+        games_last_week = list(filter(last_week, fgs))
+        wins_last_week = len(list(filter(is_win, games_last_week)))
+        losses_last_week = len(list(filter(is_loss, games_last_week)))
+        ties_last_week = len(list(filter(is_tie, games_last_week)))
+        winrate_last_week = win_rate(wins_last_week, losses_last_week, ties_last_week)
+
         games_last_month = list(filter(last_month, fgs))
-        games_last_three_months = list(filter(last_three_months, fgs))
-        games_last_six_months = list(filter(last_six_months, fgs))
-        games_last_year = list(filter(last_year, fgs))
         wins_last_month = len(list(filter(is_win, games_last_month)))
         losses_last_month = len(list(filter(is_loss, games_last_month)))
         ties_last_month = len(list(filter(is_tie, games_last_month)))
         winrate_last_month = win_rate(wins_last_month, losses_last_month, ties_last_month)
+
+        games_last_three_months = list(filter(last_three_months, fgs))
         wins_last_three_months = len(list(filter(is_win, games_last_three_months)))
         losses_last_three_months = len(list(filter(is_loss, games_last_three_months)))
         ties_last_three_months = len(list(filter(is_tie, games_last_three_months)))
         winrate_last_three_months = win_rate(
             wins_last_three_months, losses_last_three_months, ties_last_three_months
         )
-        wins_last_six_months = len(list(filter(is_win, games_last_six_months)))
-        losses_last_six_months = len(list(filter(is_loss, games_last_six_months)))
-        ties_last_six_months = len(list(filter(is_tie, games_last_six_months)))
-        winrate_last_six_months = win_rate(
-            wins_last_six_months, losses_last_six_months, ties_last_six_months
-        )
+
+        games_last_year = list(filter(last_year, fgs))
         wins_last_year = len(list(filter(is_win, games_last_year)))
         losses_last_year = len(list(filter(is_loss, games_last_year)))
         ties_last_year = len(list(filter(is_tie, games_last_year)))
@@ -3037,7 +3038,7 @@ async def stats(ctx: Context):
 
         output = ""
         if config.SHOW_TRUESKILL:
-            output += f"**Trueskill:**"
+            output += f"**Trueskill: {escape_markdown(ctx.message.author.display_name)}**"
             player_region_trueskills: list[PlayerRegionTrueskill] = (
                 session.query(PlayerRegionTrueskill)
                 .filter(PlayerRegionTrueskill.player_id == player_id)
@@ -3062,9 +3063,9 @@ async def stats(ctx: Context):
             output += f"**Trueskill:** {trueskill_pct}"
         output += f"\n\n**Wins / Losses / Ties / Total:**"
         output += f"\n**Lifetime:** {len(wins)} / {len(losses)} / {len(ties)} / {total_games} _({winrate}%)_"
+        output += f"\n**Last 7 days:** {wins_last_week} / {losses_last_week} / {ties_last_week} / {len(games_last_week)} _({winrate_last_week}%)_"
         output += f"\n**Last 30 days:** {wins_last_month} / {losses_last_month} / {ties_last_month} / {len(games_last_month)} _({winrate_last_month}%)_"
         output += f"\n**Last 90 days:** {wins_last_three_months} / {losses_last_three_months} / {ties_last_three_months} / {len(games_last_three_months)} _({winrate_last_three_months}%)_"
-        output += f"\n**Last 180 days:** {wins_last_six_months} / {losses_last_six_months} / {ties_last_six_months} / {len(games_last_six_months)} _({winrate_last_six_months}%)_"
         output += f"\n**Last 365 days:** {wins_last_year} / {losses_last_year} / {ties_last_year} / {len(games_last_year)} _({winrate_last_year}%)_"
 
         await send_message(
