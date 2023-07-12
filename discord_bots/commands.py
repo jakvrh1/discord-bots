@@ -1071,6 +1071,14 @@ async def add(ctx: Context, *args):
         )
         return
 
+    if len(args) == 0:
+        await send_message(
+            ctx.message.channel,
+            embed_description="You must specify a queue to add to (queue index or queue name)",
+            colour=Colour.red(),
+        )
+        return
+
     with Session() as session:
         most_recent_game: FinishedGame | None = (
             session.query(FinishedGame)
