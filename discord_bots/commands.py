@@ -1101,11 +1101,24 @@ async def add(ctx: Context, *args):
                 # Try adding by integer index first, then try string name
                 try:
                     queue_index = int(arg) - 1
+                    if queue_index >= len(all_queues):
+                        await send_message(
+                            ctx.message.channel,
+                            embed_description="No valid queues found",
+                            colour=Colour.red(),
+                        )
+                        return
                     queues_to_add.append(all_queues[queue_index])
                 except ValueError:
                     queue: Queue | None = session.query(Queue).filter(Queue.name.ilike(arg)).first()  # type: ignore
-                    if queue:
-                        queues_to_add.append(queue)
+                    if queue is None:
+                        await send_message(
+                            ctx.message.channel,
+                            embed_description="No valid queues found",
+                            colour=Colour.red(),
+                        )
+                        return
+                    queues_to_add.append(queue)
                 except IndexError:
                     continue
 
