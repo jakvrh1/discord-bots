@@ -54,6 +54,7 @@ The following are optional
 - `RE_ADD_DELAY_SECONDS` - Time in "waiting list" after a game ghas finished
 - `DISABLE_PRIVATE_MESSAGES` - Force bot not to send private messages
 - `POP_RANDOM_QUEUE` - Determines which queue starts a game when a single add could pop multiple queues. If false the "first" queue will pop
+- `DAYS_UNTIL_INACTIVE` - Days before player is marked as inactive and those not shown in the leaderboard command
 
 ## Running the bot
 

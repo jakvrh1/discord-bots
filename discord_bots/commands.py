@@ -20,6 +20,7 @@ from discord.ext.commands.context import Context
 from discord.member import Member
 from discord.utils import escape_markdown
 from sqlalchemy.exc import IntegrityError
+from sqlalchemy import and_
 from trueskill import Rating, rate
 
 import discord_bots.config as config
@@ -2010,17 +2011,26 @@ async def leaderboard(ctx: Context, *args):
             if queue_region:
                 output = "**Leaderboard**"
                 output += f"\n_{queue_region.name}_"
-                top_10_prts: list[PlayerRegionTrueskill] = (
-                    session.query(PlayerRegionTrueskill)
-                    .filter(PlayerRegionTrueskill.queue_region_id == queue_region.id)
+
+                date_before_inactivity = datetime.now(timezone.utc) - timedelta(days=config.DAYS_UNTIL_INACTIVE)
+                top_10_players = list(
+                    session
+                    .query(Player, PlayerRegionTrueskill)
+                    .filter(
+                        and_(
+                            Player.id == PlayerRegionTrueskill.player_id,
+                            PlayerRegionTrueskill.queue_region_id == queue_region.id,
+                            Player.last_activity_at >= date_before_inactivity
+                        )
+                    )
                     .order_by(PlayerRegionTrueskill.leaderboard_trueskill.desc())
                     .limit(10)
                 )
-                for i, prt in enumerate(top_10_prts, 1):
-                    player: Player = session.query(Player).filter(Player.id == prt.player_id).first()
-                    output += f"\n{i}. {round(prt.leaderboard_trueskill, 1)} - {player.name}"
+
+                for i, it in enumerate(top_10_players, 1):
+                    output += f"\n{i}. {round(it.PlayerRegionTrueskill.leaderboard_trueskill, 1)} - {it.Player.name}"
                     if config.SHOW_TRUESKILL_DETAILS:
-                        output += f" _(mu: {round(prt.rated_trueskill_mu, 1)}, sigma: {round(prt.rated_trueskill_sigma, 1)})_"
+                        output += f" _(mu: {round(it.PlayerRegionTrueskill.rated_trueskill_mu, 1)}, sigma: {round(it.PlayerRegionTrueskill.rated_trueskill_sigma, 1)})_"
 
                 output += "\n"
                 output += "\n(Ranks calculated using the formula: _mu - 3*sigma_)"
