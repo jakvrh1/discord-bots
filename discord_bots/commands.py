@@ -1008,7 +1008,7 @@ def map_status_str(full_status: bool) -> str:
                                                                                Map.id != current_map_id).order_by(
                         Map.rotation_index.asc()).all()  # type: ignore
                     next_map = next(filter(lambda x: x.rotation_index > current_rotation_index, other_rotation_maps),
-                                    None) or other_rotation_maps[0]
+                                    current_map_full) or other_rotation_maps[0]
                     first_rotation_map: Map = session.query(Map).filter(Map.rotation_weight > 0).order_by(
                         Map.rotation_index.asc()).first()  # type: ignore
                     if first_rotation_map and current_rotation_index == first_rotation_map.rotation_index:
