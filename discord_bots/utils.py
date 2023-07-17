@@ -28,6 +28,14 @@ from discord_bots.models import (
 log = define_logger(__name__)
 
 
+def is_really_numeric(s: str) -> bool:
+    try:
+        int(s)
+        return True
+    except ValueError:
+        return False
+
+
 def get_current_map_readonly() -> tuple[CurrentMap, Map] | tuple[None, None]:
     """
     !WARNING! The objects are no longer tracked by the session. Treat them as immutable.

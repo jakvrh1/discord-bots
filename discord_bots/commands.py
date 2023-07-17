@@ -26,6 +26,7 @@ import discord_bots.config as config
 from discord_bots.utils import (
     upload_stats_screenshot_imgkit,
     update_current_map,
+    is_really_numeric,
 )
 from .bot import bot
 from .models import (
@@ -1091,41 +1092,23 @@ async def add(ctx: Context, *args):
         )
 
         queues_to_add: list[Queue] = []
-        if len(args) == 0:
-            # Don't auto-add to isolated queues
-            queues_to_add += session.query(Queue).filter(Queue.is_isolated == False).order_by(
-                Queue.created_at.asc()).all()  # type: ignore
-        else:
-            all_queues = session.query(Queue).order_by(Queue.created_at.asc()).all()  # type: ignore
-            for arg in args:
-                # Try adding by integer index first, then try string name
-                try:
-                    queue_index = int(arg) - 1
-                    if queue_index >= len(all_queues):
-                        await send_message(
-                            ctx.message.channel,
-                            embed_description="No valid queues found",
-                            colour=Colour.red(),
-                        )
-                        return
+        all_queues = session.query(Queue).order_by(Queue.created_at.asc()).all()  # type: ignore
+        for arg in args:
+            # Try adding by integer index first, then try string name
+            if is_really_numeric(arg):
+                queue_index = int(arg) - 1
+                if 0 <= queue_index < len(all_queues):
                     queues_to_add.append(all_queues[queue_index])
-                except ValueError:
-                    queue: Queue | None = session.query(Queue).filter(Queue.name.ilike(arg)).first()  # type: ignore
-                    if queue is None:
-                        await send_message(
-                            ctx.message.channel,
-                            embed_description="No valid queues found",
-                            colour=Colour.red(),
-                        )
-                        return
-                    queues_to_add.append(queue)
-                except IndexError:
+            else:
+                queue: Queue | None = session.query(Queue).filter(Queue.name.ilike(arg)).first()  # type: ignore
+                if queue is None:
                     continue
+                queues_to_add.append(queue)
 
         if len(queues_to_add) == 0:
             await send_message(
                 message.channel,
-                content="No valid queues found",
+                embed_description="No valid queues found",
                 colour=Colour.red(),
             )
             return
@@ -1512,28 +1495,31 @@ async def del_(ctx: Context, *args):
     message = ctx.message
     with Session() as session:
         queues_to_del: list[Queue] = []
-        all_queues: list[Queue] = session.query(Queue).join(QueuePlayer).filter(
+        all_added_queues: list[Queue] = session.query(Queue).join(QueuePlayer).filter(
             QueuePlayer.player_id == message.author.id).order_by(Queue.created_at.asc()).all()  # type: ignore
+
         if len(args) == 0:
-            queues_to_del = all_queues
+            queues_to_del = all_added_queues
         else:
+            all_queues: list[Queue] = session.query(Queue).order_by(Queue.created_at.asc()).all()  # type: ignore
             for arg in args:
-                # Try to remove by integer index first, then try string name
-                try:
+                queue_to_del: list[Queue] = []
+                # Try deleting by integer index first, then try string name
+                if is_really_numeric(arg):
                     queue_index = int(arg) - 1
-                    queues_to_del.append(all_queues[queue_index])
-                except ValueError:
-                    queue: Queue | None = session.query(Queue).filter(Queue.name.ilike(arg)).first()  # type: ignore
-                    if queue:
-                        queues_to_del.append(queue)
-                except IndexError:
-                    continue
+                    if 0 <= queue_index < len(all_queues):
+                        del_queue_id = all_queues[queue_index].id
+                        queue_to_del = list(filter(lambda q: q.id == del_queue_id, all_added_queues))
+                else:
+                    queue_to_del = list(filter(lambda q: q.name.lower() == arg.lower(), all_added_queues))
+                if len(queue_to_del) == 1:
+                    queues_to_del.append(queue_to_del[0])
 
         for queue in queues_to_del:
             session.query(QueuePlayer).filter(
                 QueuePlayer.queue_id == queue.id, QueuePlayer.player_id == message.author.id
             ).delete()
-            # TODO: Test this part
+            # TODO Sauon: The QueueWaitlist part doesnt work yet
             queue_waitlist: QueueWaitlist | None = (
                 session.query(QueueWaitlist)
                 .filter(
@@ -1548,8 +1534,8 @@ async def del_(ctx: Context, *args):
                 ).delete()
 
         queue_statuses = []
-        queue: Queue
-        for queue in session.query(Queue).order_by(Queue.created_at.asc()).all():  # type: ignore
+        all_queues = session.query(Queue).order_by(Queue.created_at.asc()).all()  # type: ignore
+        for queue in all_queues:
             queue_players = (
                 session.query(QueuePlayer).filter(QueuePlayer.queue_id == queue.id).all()
             )
