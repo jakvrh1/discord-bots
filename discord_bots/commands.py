@@ -2009,12 +2009,35 @@ async def leaderboard(ctx: Context, *args):
             if queue_region:
                 output = "**Leaderboard**"
                 output += f"\n_{queue_region.name}_"
-                top_10_prts: list[PlayerRegionTrueskill] = (
-                    session.query(PlayerRegionTrueskill)
-                    .filter(PlayerRegionTrueskill.queue_region_id == queue_region.id)
-                    .order_by(PlayerRegionTrueskill.leaderboard_trueskill.desc())
-                    .limit(10)
-                )
+
+                leaderboard_prt_native_query = f"""
+                        select
+                            p.id as player_id,
+                            (prt.rated_trueskill_mu - 3 * prt.rated_trueskill_sigma)::numeric as rating
+                        from player_region_trueskill prt
+                        join player p on p.id = prt.player_id
+                        INNER JOIN (
+                            select fgp.player_id, MAX(fg.finished_at) AS last_played
+                            from finished_game fg
+                            join finished_game_player fgp on fg.id = fgp.finished_game_id
+                            WHERE fg.started_at > NOW() - INTERVAL '{config.DAYS_UNTIL_INACTIVE} DAYS'
+                            group by fgp.player_id
+                        ) as last_played ON p.id = last_played.player_id
+                        where queue_region_id = '{queue_region.id}'
+                        AND   last_played.last_played > NOW() - INTERVAL '{config.DAYS_UNTIL_INACTIVE} DAYS'
+                        order by rating desc
+                        limit 10
+                        """
+                leaderboard_ids = []
+                rs = session.execute(leaderboard_prt_native_query)
+                for row in rs:
+                    leaderboard_ids.append(row[0])
+
+                top_10_prts: list[PlayerRegionTrueskill] = session.query(PlayerRegionTrueskill) \
+                    .filter(PlayerRegionTrueskill.queue_region_id == queue_region.id,
+                            PlayerRegionTrueskill.player_id.in_(leaderboard_ids)) \
+                    .order_by(PlayerRegionTrueskill.leaderboard_trueskill.desc()).all()
+
                 for i, prt in enumerate(top_10_prts, 1):
                     player: Player = session.query(Player).filter(Player.id == prt.player_id).first()
                     output += f"\n{i}. {round(prt.leaderboard_trueskill, 1)} - {player.name}"
@@ -2032,9 +2055,33 @@ async def leaderboard(ctx: Context, *args):
                 )
         else:
             output = "**Leaderboard**\nranked"
-            top_10_players: list[Player] = (
-                session.query(Player).order_by(Player.leaderboard_trueskill.desc()).limit(10)
-            )
+
+            leaderboard_player_native_query = f"""
+                                    select
+                                        p.id as player_id,
+                                        (p.rated_trueskill_mu - 3 * p.rated_trueskill_sigma)::numeric as rating
+                                    from player p
+                                    INNER JOIN (
+                                        select fgp.player_id, MAX(fg.finished_at) AS last_played
+                                        from finished_game fg
+                                        join finished_game_player fgp on fg.id = fgp.finished_game_id
+                                        WHERE fg.started_at > NOW() - INTERVAL '{config.DAYS_UNTIL_INACTIVE} DAYS'
+                                        group by fgp.player_id
+                                    ) as last_played ON p.id = last_played.player_id
+                                    AND   last_played.last_played > NOW() - INTERVAL '{config.DAYS_UNTIL_INACTIVE} DAYS'
+                                    order by rating desc
+                                    limit 10
+                                    """
+            leaderboard_ids = []
+            rs = session.execute(leaderboard_player_native_query)
+            for row in rs:
+                leaderboard_ids.append(row[0])
+
+            top_10_players: list[Player] = session.query(Player) \
+                .filter(Player.id.in_(leaderboard_ids)) \
+                .order_by(Player.leaderboard_trueskill.desc()) \
+                .all()
+
             for i, player in enumerate(top_10_players, 1):
                 output += f"\n{i}. {round(player.leaderboard_trueskill, 1)} - {player.name}"
                 if config.SHOW_TRUESKILL_DETAILS:
